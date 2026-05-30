@@ -28,8 +28,21 @@ export class RestApiError extends Error {
   }
 }
 
+export function getErrorMessage(error: unknown) {
+  if (error instanceof RestApiError) {
+    const data = error.data as { message?: string } | null
+    return data?.message ?? error.message
+  }
+
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return '?붿껌 泥섎━ 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.'
+}
+
 function buildUrl(url: string, query?: Record<string, QueryValue>) {
-  const requestUrl = new URL(url)
+  const requestUrl = new URL(url, window.location.origin)
 
   Object.entries(query ?? {}).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
