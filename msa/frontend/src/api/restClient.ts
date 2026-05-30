@@ -38,7 +38,7 @@ export function getErrorMessage(error: unknown) {
     return error.message
   }
 
-  return '?붿껌 泥섎━ 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.'
+  return '오류가 발생했습니다.'
 }
 
 function buildUrl(url: string, query?: Record<string, QueryValue>) {
