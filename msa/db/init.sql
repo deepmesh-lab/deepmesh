@@ -33,3 +33,18 @@ CREATE TABLE IF NOT EXISTS posts (
     created_at DATETIME     DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
+
+-- comments_db: 댓글 서비스 (comment-service)
+CREATE DATABASE IF NOT EXISTS comments_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE comments_db;
+
+CREATE TABLE IF NOT EXISTS comments (
+    id         BIGINT      AUTO_INCREMENT PRIMARY KEY,
+    post_id    BIGINT      NOT NULL,        -- 논리적 참조 (posts_db.posts.id)
+    user_id    BIGINT      NOT NULL,        -- 논리적 참조 (auth_db.users.id)
+    username   VARCHAR(50) NOT NULL,        -- 역정규화
+    content    TEXT        NOT NULL,
+    created_at DATETIME    DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_post_id_id (post_id, id)      -- Cursor 페이지네이션 (post_id 필터 + id 정렬) 최적화
+);
