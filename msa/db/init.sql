@@ -1,4 +1,4 @@
--- auth db: 인증 서비스 (auth-service)
+-- auth_db: 인증 서비스 (auth-service)
 CREATE DATABASE IF NOT EXISTS auth_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE auth_db;
 
@@ -18,4 +18,18 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,  -- 물리적 FK (같은 DB)
     INDEX idx_token (token(255)),
     INDEX idx_expires_at (expires_at)    -- 만료 토큰 정리(Scheduled Job) 최적화
+);
+
+-- posts_db: 게시글 서비스 (post-service)
+CREATE DATABASE IF NOT EXISTS posts_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE posts_db;
+
+CREATE TABLE IF NOT EXISTS posts (
+    id         BIGINT       AUTO_INCREMENT PRIMARY KEY,
+    user_id    BIGINT       NOT NULL,        -- 논리적 참조 (auth_db.users.id)
+    username   VARCHAR(50)  NOT NULL,        -- 역정규화: 조회 시 Auth 호출 불필요
+    title      VARCHAR(255) NOT NULL,
+    content    TEXT         NOT NULL,
+    created_at DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
