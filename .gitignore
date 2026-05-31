@@ -1,0 +1,33 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IntelliJ
+.idea/
+*.iml
+*.iws
+out/
+
+# Spring Boot
+**/src/main/resources/application-local.yml
+HELP.md
+
+# 환경변수
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+mysql-data/
+
+# Python (model-training)
+__pycache__/
+*.pyc
+*.pth
+*.pkl
+.venv/
