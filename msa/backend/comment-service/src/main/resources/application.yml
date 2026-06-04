@@ -1,0 +1,51 @@
+server:
+  port: 8080
+  tomcat: # HTTP Keep-Alive
+    connection-timeout: 20s       # TCP 연결 후 첫 요청 대기 시간
+    max-connections: 8192
+    accept-count: 100
+    threads:
+      max: 200
+      min-spare: 10
+
+spring:
+  application:
+    name: comment-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/comments_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:rootpassword}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      pool-name: comment-pool
+      maximum-pool-size: 10
+      minimum-idle: 10
+      connection-timeout: 30000     # 풀에서 커넥션 획득 대기 최대 (ms)
+      idle-timeout: 600000          # 유휴 커넥션 반납 시간 (ms)
+      max-lifetime: 1800000         # 커넥션 최대 수명 (ms) - MySQL wait_timeout(8h)보다 낮게
+      keepalive-time: 300000        # 유휴 커넥션 ping 주기 (ms) - 커넥션 끊김 방지
+      initialization-fail-timeout: 60000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+  sql:
+    init:
+      mode: never
+
+experiment:
+  validation:
+    enabled: true
+  db-pool:
+    enabled: true
+  http-pool:
+    enabled: true
+  keep-alive:
+    enabled: true
+
+service:
+  auth-url: ${AUTH_SERVICE_URL:http://auth-service:8080}
+  post-url: ${POST_SERVICE_URL:http://post-service:8080}
