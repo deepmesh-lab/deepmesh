@@ -225,6 +225,7 @@ class ProxyHandler:
         payload = {
             "request_body": base64.b64encode(request_bytes).decode("utf-8"),
             "headers": headers,
+            "source_ip": os.environ.get("POD_IP", ""),
         }
         try:
             resp = requests.post(url, json=payload, timeout=2.0)
