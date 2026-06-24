@@ -1,0 +1,92 @@
+version: "3.8"
+
+# ============================================================
+# DeepMesh MSA - 로컬 통합 테스트 환경
+# 실행: docker-compose up --build  (msa/ 디렉토리에서)
+# ============================================================
+
+services:
+
+  # ── MySQL (MSA 전용: auth_db, posts_db, comments_db) ──────
+  mysql:
+    image: mysql:8.0
+    container_name: deepmesh-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_ROOT_HOST: "%"
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro   # msa/db/init.sql
+      - mysql-data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-prootpassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  # ── Auth Service ──────────────────────────────────────────
+  auth-service:
+    build:
+      context: ./backend/auth-service
+      dockerfile: Dockerfile
+    container_name: deepmesh-auth
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/auth_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: rootpassword
+      JWT_SECRET: ZGVlcG1lc2gtc2VjcmV0LWtleS0yMDI2LWRlZmF1bHQ=
+    ports:
+      - "8081:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Post Service ──────────────────────────────────────────
+  post-service:
+    build:
+      context: ./backend/post-service
+      dockerfile: Dockerfile
+    container_name: deepmesh-post
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/posts_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: rootpassword
+      AUTH_SERVICE_URL: http://auth-service:8080
+      COMMENT_SERVICE_URL: http://comment-service:8080
+    ports:
+      - "8082:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    restart: unless-stopped
+
+  # ── Comment Service ───────────────────────────────────────
+  comment-service:
+    build:
+      context: ./backend/comment-service
+      dockerfile: Dockerfile
+    container_name: deepmesh-comment
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/comments_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: rootpassword
+      AUTH_SERVICE_URL: http://auth-service:8080
+      POST_SERVICE_URL: http://post-service:8080    # 게시글 존재 검증용
+    ports:
+      - "8083:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      post-service:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
