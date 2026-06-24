@@ -147,30 +147,40 @@ def verify_request():
         if known_ips and source_ip not in known_ips:
             logger.warning("알 수 없는 source_ip=%s → deny", source_ip)
             return jsonify(
-                {"allow": False, "reason": f"알 수 없는 출발지 IP: {source_ip}"}
+                {"allow": False, "reason": f"알 수 없는 출발지 IP: {source_ip}", "peer_ips": []}
             )
     else:
         logger.debug("source_ip 미제공 — IP 검증 생략")
 
     # ── 2. request_body 기본 검증 ──────────────
     if not encoded_body:
-        return jsonify({"allow": False, "reason": "request_body 필드 없음"})
+        return jsonify({"allow": False, "reason": "request_body 필드 없음", "peer_ips": []})
 
     try:
         raw_body: bytes = base64.b64decode(encoded_body)
     except Exception:
-        return jsonify({"allow": False, "reason": "request_body base64 디코딩 실패"})
+        return jsonify({"allow": False, "reason": "request_body base64 디코딩 실패", "peer_ips": []})
 
     MIN_BODY_LEN = 1
     if len(raw_body) < MIN_BODY_LEN:
         logger.warning("request_body 너무 짧음 (len=%d) → deny", len(raw_body))
         return jsonify(
-            {"allow": False, "reason": f"request_body 길이 부족 ({len(raw_body)} bytes)"}
+            {"allow": False, "reason": f"request_body 길이 부족 ({len(raw_body)} bytes)", "peer_ips": []}
         )
 
-    # ── 3. 허용 ───────────────────────────────
-    logger.info("요청 허용: source_ip=%s, body_len=%d", source_ip, len(raw_body))
-    return jsonify({"allow": True, "reason": "검증 통과"})
+    # ── 3. 허용 — source_ip와 동일 서비스의 peer Pod IP 목록 포함 ──────
+    service_name = None
+    with registry_lock:
+        for svc, ips in pod_registry.items():
+            if source_ip and source_ip in ips:
+                service_name = svc
+                break
+        peer_ips = [
+            ip for ip in pod_registry.get(service_name, []) if ip != source_ip
+        ] if service_name else []
+
+    logger.info("요청 허용: source_ip=%s, body_len=%d, peer_ips=%s", source_ip, len(raw_body), peer_ips)
+    return jsonify({"allow": True, "reason": "검증 통과", "peer_ips": peer_ips})
 
 
 # ──────────────────────────────────────────────

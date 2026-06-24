@@ -190,15 +190,17 @@ class ProxyHandler:
         result = self._verify_with_control_plane(request_bytes, request_headers)
 
         if result.get("allow"):
-            logger.info("Relay: CP 허가, score=%.4f", score)
+            logger.info("Relay: CP 허가, score=%.4f, peer_ips=%s", score, result.get("peer_ips", []))
             return {
                 "action": "relay",
+                "peer_ips": result.get("peer_ips", []),
                 "reason": f"anomaly but CP allowed (score={score:.4f})",
             }
         else:
             logger.warning("Drop: CP 거부, score=%.4f", score)
             return {
                 "action": "drop",
+                "peer_ips": [],
                 "reason": f"anomaly, CP denied (score={score:.4f})",
             }
 
@@ -228,13 +230,16 @@ class ProxyHandler:
             resp = requests.post(url, json=payload, timeout=2.0)
             resp.raise_for_status()
             data = resp.json()
-            return {"allow": bool(data.get("allow", False))}
+            return {
+                "allow": bool(data.get("allow", False)),
+                "peer_ips": list(data.get("peer_ips", [])),
+            }
         except requests.exceptions.Timeout:
             logger.error("Control Plane 타임아웃 (2s) → Drop 처리")
-            return {"allow": False}
+            return {"allow": False, "peer_ips": []}
         except requests.exceptions.RequestException as exc:
             logger.error("Control Plane 요청 오류: %s → Drop 처리", exc)
-            return {"allow": False}
+            return {"allow": False, "peer_ips": []}
 
 
 # ---------------------------------------------------------------------------

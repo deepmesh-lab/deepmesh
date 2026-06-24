@@ -92,15 +92,24 @@ class ProxyHTTPHandler(BaseHTTPRequestHandler):
         )
 
         # 3. action에 따른 처리
-        if action in ("forward", "relay"):
-            self._proxy_to_target(body_bytes, headers_dict)
+        if action == "relay":
+            peer_ips = result.get("peer_ips", [])
+            if peer_ips:
+                target = f"http://{peer_ips[0]}:{TARGET_PORT}"
+            else:
+                target = TARGET_HOST
+            self._proxy_to_target(body_bytes, headers_dict, target)
+        elif action == "forward":
+            self._proxy_to_target(body_bytes, headers_dict, TARGET_HOST)
         else:
             # action == "drop"
             self._send_blocked_response()
 
-    def _proxy_to_target(self, body_bytes: bytes, headers_dict: dict):
-        """실제 서비스(localhost:TARGET_PORT)로 요청을 프록싱."""
-        target_url = f"{TARGET_HOST}{self.path}"
+    def _proxy_to_target(self, body_bytes: bytes, headers_dict: dict, target: str = None):
+        """실제 서비스로 요청을 프록싱. target 미지정 시 TARGET_HOST 사용."""
+        if target is None:
+            target = TARGET_HOST
+        target_url = f"{target}{self.path}"
 
         # 프록싱 시 hop-by-hop 헤더 제거
         _HOP_BY_HOP = {
