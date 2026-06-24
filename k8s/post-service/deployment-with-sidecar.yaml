@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: post-service
+  namespace: deepmesh
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: post-service
+  template:
+    metadata:
+      labels:
+        app: post-service
+    spec:
+      initContainers:
+        - name: iptables-init
+          image: uicheolshin/reverse-proxy:latest
+          command: ["sh", "/app/iptables-init.sh"]
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"]
+
+      volumes:
+        - name: model-volume
+          persistentVolumeClaim:
+            claimName: post-service-model-pvc
+
+      containers:
+        - name: post-service
+          image: uicheolshin/post-service:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: deepmesh-config
+                  key: POSTS_DB_URL
+            - name: SPRING_DATASOURCE_USERNAME
+              value: root
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: deepmesh-secret
+                  key: MYSQL_ROOT_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: deepmesh-secret
+                  key: JWT_SECRET
+            - name: SPRING_JPA_HIBERNATE_DDL_AUTO
+              value: update
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+
+        - name: reverse-proxy
+          image: uicheolshin/reverse-proxy:latest
+          ports:
+            - containerPort: 9011
+          env:
+            - name: TARGET_PORT
+              value: "8080"
+            - name: PROXY_PORT
+              value: "9011"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: SERVICE_NAME
+              value: post-service
+            - name: CONTROL_PLANE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: deepmesh-config
+                  key: CONTROL_PLANE_URL
+            - name: MODEL_DIR
+              value: /app/model
+          volumeMounts:
+            - name: model-volume
+              mountPath: /app/model

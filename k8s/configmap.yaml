@@ -10,3 +10,4 @@ data:
   AUTH_SERVICE_URL: "http://auth-service:8080"
   POST_SERVICE_URL: "http://post-service:8080"
   COMMENT_SERVICE_URL: "http://comment-service:8080"
+  CONTROL_PLANE_URL: "http://control-plane-service.deepmesh:8080"
