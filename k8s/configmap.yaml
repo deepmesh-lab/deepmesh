@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deepmesh-config
+  namespace: deepmesh
+data:
+  AUTH_DB_URL: "jdbc:mysql://mysql-service:3306/auth_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&createDatabaseIfNotExist=true"
+  POSTS_DB_URL: "jdbc:mysql://mysql-service:3306/posts_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&createDatabaseIfNotExist=true"
+  COMMENTS_DB_URL: "jdbc:mysql://mysql-service:3306/comments_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&createDatabaseIfNotExist=true"
+  AUTH_SERVICE_URL: "http://auth-service:8080"
+  POST_SERVICE_URL: "http://post-service:8080"
+  COMMENT_SERVICE_URL: "http://comment-service:8080"
