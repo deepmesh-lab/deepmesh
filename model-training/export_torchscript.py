@@ -9,49 +9,11 @@ TorchScript 내보내기 스크립트
 
 import argparse
 import os
+import sys
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
-
-# ---------------------------------------------------------------------------
-# Student 모델 정의 (로드용)
-# ---------------------------------------------------------------------------
-
-class StudentCNN(nn.Module):
-    """
-    Knowledge Distillation용 Student CNN (CNN-2x16).
-
-    Input:  (B, 5, 1479)  — 채널 차원 unsqueeze 후 (B, 1, 5, 1479) 로 처리
-    Output: (B, embed_dim) — L2 정규화된 embedding 벡터
-    """
-
-    def __init__(self, embed_dim: int = 128):
-        super().__init__()
-
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=(1, 7), stride=(1, 3)),
-            nn.BatchNorm2d(16),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=(1, 2)),
-        )
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(16, 16, kernel_size=(1, 5), stride=(1, 2)),
-            nn.BatchNorm2d(16),
-            nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool2d((5, 16)),
-        )
-        self.fc = nn.Linear(5 * 16 * 16, embed_dim)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x.unsqueeze(1)
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = x.flatten(1)
-        x = self.fc(x)
-        x = F.normalize(x, dim=1)
-        return x
+from student_cnn import StudentCNN
 
 
 # ---------------------------------------------------------------------------
@@ -59,6 +21,11 @@ class StudentCNN(nn.Module):
 # ---------------------------------------------------------------------------
 
 def export(args: argparse.Namespace) -> None:
+    # 경로 검증
+    if not os.path.exists(args.student):
+        print(f"[오류] --student 경로가 존재하지 않습니다: {args.student}", file=sys.stderr)
+        sys.exit(1)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[내보내기] 디바이스: {device}")
 

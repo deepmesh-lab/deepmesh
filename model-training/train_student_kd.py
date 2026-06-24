@@ -10,12 +10,15 @@ Student CNN Knowledge Distillation 학습 스크립트
 
 import argparse
 import os
+import sys
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
+
+from student_cnn import StudentCNN
 
 
 # ---------------------------------------------------------------------------
@@ -65,58 +68,6 @@ class TeacherCNN(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# Student 모델 정의 (CNN-2x16)
-# ---------------------------------------------------------------------------
-
-class StudentCNN(nn.Module):
-    """
-    Knowledge Distillation용 Student CNN (CNN-2x16).
-
-    Input:  (B, 5, 1479)  — 채널 차원 unsqueeze 후 (B, 1, 5, 1479) 로 처리
-    Output: (B, embed_dim) — L2 정규화된 embedding 벡터
-
-    구조:
-      Conv 블록 1: Conv2d(1, 16, k=(1,7), s=(1,3)) → BN → ReLU → MaxPool2d((1,2))
-      Conv 블록 2: Conv2d(16, 16, k=(1,5), s=(1,2)) → BN → ReLU → AdaptiveAvgPool2d((5,16))
-      Flatten → Linear(5*16*16=1280, embed_dim) → L2 Normalize
-    """
-
-    def __init__(self, embed_dim: int = 128):
-        super().__init__()
-
-        # Conv 블록 1: (B, 1, 5, 1479) → (B, 16, 5, ?)
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=(1, 7), stride=(1, 3)),
-            nn.BatchNorm2d(16),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=(1, 2)),
-        )
-
-        # Conv 블록 2: → AdaptiveAvgPool로 (B, 16, 5, 16) 고정
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(16, 16, kernel_size=(1, 5), stride=(1, 2)),
-            nn.BatchNorm2d(16),
-            nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool2d((5, 16)),
-        )
-
-        # Projection head: 5*16*16=1280 → embed_dim → L2 normalize
-        self.fc = nn.Linear(5 * 16 * 16, embed_dim)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # (B, 5, 1479) → (B, 1, 5, 1479)
-        x = x.unsqueeze(1)
-
-        x = self.conv1(x)
-        x = self.conv2(x)
-
-        x = x.flatten(1)           # (B, 5*16*16=1280)
-        x = self.fc(x)             # (B, embed_dim)
-        x = F.normalize(x, dim=1)  # L2 정규화
-        return x
-
-
-# ---------------------------------------------------------------------------
 # 데이터셋
 # ---------------------------------------------------------------------------
 
@@ -148,6 +99,14 @@ class BenignDataset(Dataset):
 # ---------------------------------------------------------------------------
 
 def train(args: argparse.Namespace) -> None:
+    # 경로 검증
+    if not os.path.exists(args.data):
+        print(f"[오류] --data 경로가 존재하지 않습니다: {args.data}", file=sys.stderr)
+        sys.exit(1)
+    if not os.path.exists(args.teacher):
+        print(f"[오류] --teacher 경로가 존재하지 않습니다: {args.teacher}", file=sys.stderr)
+        sys.exit(1)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[학습] 디바이스: {device}")
 
