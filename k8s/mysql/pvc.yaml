@@ -4,6 +4,7 @@ metadata:
   name: mysql-pvc
   namespace: deepmesh
 spec:
+  storageClassName: local-path
   accessModes:
     - ReadWriteOnce
   resources:
