@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
 
 @RestController
 @RequiredArgsConstructor
@@ -21,13 +22,13 @@ public class AuthController {
 
 
     @PostMapping("/api/auth/signup")
-    public ResponseEntity<SignupResponse> signup(@RequestBody SignupRequest req) {
+    public ResponseEntity<SignupResponse> signup(@Valid @RequestBody SignupRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(authService.signup(req));
     }
 
 
     @PostMapping("/api/auth/login")
-    public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest req) {
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest req) {
         TokenPair tokens = authService.login(req);
 
         // ResponseCookie 빌더 - 쿠기 속성 설정
