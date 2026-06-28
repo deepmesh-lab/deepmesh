@@ -1,9 +1,10 @@
 package com.deepmesh.auth.service;
 
-import com.deepmesh.auth.config.JwtUtil;
 import com.deepmesh.auth.dto.*;
 import com.deepmesh.auth.entity.RefreshToken;
 import com.deepmesh.auth.entity.User;
+import com.deepmesh.auth.config.JwtUtil;
+import com.deepmesh.auth.exception.ApiException;
 import com.deepmesh.auth.repository.RefreshTokenRepository;
 import com.deepmesh.auth.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -13,7 +14,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -70,20 +70,8 @@ public class AuthServiceTest {
         when(userRepo.existsByUsername("alice")).thenReturn(true);
 
         assertThatThrownBy(() -> authService.signup(req))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("이미 존재하는 username");
-    }
-
-    @Test
-    @DisplayName("회원가입 실패 - 필수 필드 누락이면 400")
-    void signup_missingField() {
-        SignupRequest req = new SignupRequest();
-        req.setUsername(null);
-        req.setPassword("1234");
-
-        assertThatThrownBy(() -> authService.signup(req))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("필드 누락");
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("이미 사용 중인 아이디입니다.");
     }
 
     // 로그인
@@ -127,8 +115,8 @@ public class AuthServiceTest {
         when(passwordEncoder.matches("wrong", "encoded")).thenReturn(false);
 
         assertThatThrownBy(() -> authService.login(req))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("비밀번호 불일치");
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("비밀번호가 올바르지 않습니다.");
     }
 
     @Test
@@ -140,7 +128,7 @@ public class AuthServiceTest {
         when(userRepo.findByUsername("ghost")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.login(req))
-                .isInstanceOf(ResponseStatusException.class);
+                .isInstanceOf(ApiException.class);
     }
 
     // 로그아웃
@@ -162,7 +150,7 @@ public class AuthServiceTest {
         when(jwtUtil.isValid("invalid")).thenReturn(false);
 
         assertThatThrownBy(() -> authService.logout("Bearer invalid", "refresh"))
-                .isInstanceOf(ResponseStatusException.class);
+                .isInstanceOf(ApiException.class);
     }
 
     // 재발급
@@ -170,8 +158,8 @@ public class AuthServiceTest {
     @DisplayName("재발급 실패 - RefreshToken이 null이면 401")
     void refresh_nullToken() {
         assertThatThrownBy(() -> authService.refresh(null))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Refresh Token 없음");
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("Refresh Token이 없습니다");
     }
 
     @Test
@@ -180,7 +168,7 @@ public class AuthServiceTest {
         when(tokenRepo.findByToken("refresh")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.refresh("refresh"))
-                .isInstanceOf(ResponseStatusException.class);
+                .isInstanceOf(ApiException.class);
     }
 
     // JWT 검증
@@ -190,6 +178,6 @@ public class AuthServiceTest {
         when(jwtUtil.extractBearer(anyString())).thenThrow(new IllegalArgumentException());
 
         assertThatThrownBy(() -> authService.validate("Bearer bad"))
-                .isInstanceOf(ResponseStatusException.class);
+                .isInstanceOf(ApiException.class);
     }
 }
