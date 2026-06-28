@@ -12,7 +12,7 @@ import java.util.Date;
 @Component
 public class JwtUtil {
 
-    @Value("${jwt.secret")
+    @Value("${jwt.secret}")
     private String secret;
 
     // AccessToken 6시간, RefreshToken 14일
@@ -65,7 +65,7 @@ public class JwtUtil {
 
     // Authorization 헤더에서 토큰 문자열만 추출
     public String extractBearer(String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer  ")) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             throw new IllegalArgumentException("Authorization 헤더 없음 또는 형식 오류");
         }
         return authHeader.substring(7);  // 문자열 슬라이싱
