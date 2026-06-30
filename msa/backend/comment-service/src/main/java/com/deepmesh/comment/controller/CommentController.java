@@ -17,7 +17,7 @@ public class CommentController {
     // ══════ Public API /api/** ══════
 
     /** GET /api/posts/{postId}/comments — 목록 (Cursor, 기본값 cursor=0 size=20, id 오름차순) */
-    @GetMapping("/api/posts/{postId}/comments")     // 전처리 필요
+    @GetMapping("/api/comments/{postId}/comments")     // 전처리 필요
     public ResponseEntity<CommentListResponse> getByPostId(
         @PathVariable Long postId,
         @RequestParam(required = false) Long cursor,
@@ -27,7 +27,7 @@ public class CommentController {
     }
 
     /** POST /api/posts/{postId}/comments — 댓글 작성 (postId Path Variable) */
-    @PostMapping("/api/posts/{postId}/comments")
+    @PostMapping("/api/comments/{postId}/comments")
     public ResponseEntity<CommentResponse> create(
         @RequestHeader("Authorization") String authHeader,
         @PathVariable Long postId,
