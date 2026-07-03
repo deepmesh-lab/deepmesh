@@ -1,0 +1,53 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IntelliJ
+.idea/
+*.iml
+*.iws
+out/
+
+# Spring Boot
+**/src/main/resources/application-local.yaml
+**/src/main/resources/application-local.yml
+HELP.md
+
+# 환경변수
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+mysql-data/
+
+# Python (model-training)
+__pycache__/
+*.pyc
+*.pth
+*.pkl
+.venv/
+
+# Claude Code / Superpowers (내부 도구)
+.claude/
+.superpowers/
+docs/superpowers/
+
+# K8s 민감 정보 (secret.yaml은 직접 생성, gitignore)
+k8s/secret.yaml
+# 컨테이너 빌드 산출물 (Dockerfile에서 gcc로 생성)
+*.so
+
+# 대용량 데이터/모델 산출물 (수집·전처리·학습 결과)
+*.pcap
+*.npy
+*.pt
+*.zip
+data-collection/pcap/
+model-training/data/
+model-training/models/
