@@ -16,6 +16,7 @@ services:
       - mysql-data:/var/lib/mysql
 
   auth-service:
+    image: kimgooner/auth-service:v2
     build:
       context: ./backend/auth-service
       dockerfile: Dockerfile
@@ -34,6 +35,7 @@ services:
       - "8080:8080"
 
   comment-service:
+    image: kimgooner/comment-service:v4
     build:
       context: ./backend/comment-service
       dockerfile: Dockerfile
@@ -50,6 +52,7 @@ services:
       - "8081:8080"
 
   post-service:
+    image: kimgooner/post-service:v4
     build:
       context: ./backend/post-service
       dockerfile: Dockerfile
@@ -66,11 +69,14 @@ services:
       - "8082:8080"
 
   frontend:
+    image: kimgooner/frontend:v3
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_AUTH_API_URL: http://localhost:8080
+        VITE_AUTH_API_URL: ""
+        VITE_POST_API_URL: ""
+        VITE_COMMENT_API_URL: ""
     container_name: frontend
     ports:
       - "3000:80"

@@ -25,7 +25,7 @@ export function getComments(
   size = 20,
 ) {
   return requestRestApi<CommentListResponse>(
-    commentUrl(`/api/posts/${postId}/comments`),
+    commentUrl(`/api/comments/${postId}/comments`),
     {
       query: { cursor, size },
     },
@@ -38,7 +38,7 @@ export function createComment(
   body: CommentRequest,
 ) {
   return requestRestApi<CommentResponse, CommentRequest>(
-    commentUrl(`/api/posts/${postId}/comments`),
+    commentUrl(`/api/comments/${postId}/comments`),
     {
       method: 'POST',
       headers: authHeader(accessToken),
