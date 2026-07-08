@@ -1,0 +1,161 @@
+.auth-shell {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 40px 20px;
+  box-sizing: border-box;
+  background:
+    linear-gradient(135deg, rgba(0, 120, 96, 0.08), transparent 32%),
+    linear-gradient(315deg, rgba(59, 130, 246, 0.08), transparent 36%),
+    var(--bg);
+}
+
+.auth-panel {
+  width: min(100%, 420px);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 32px;
+  background: var(--panel-bg);
+  box-shadow: var(--shadow);
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.auth-header {
+  margin-bottom: 28px;
+  text-align: center;
+}
+
+.auth-panel h1 {
+  margin: 0;
+}
+
+.auth-copy {
+  margin: 0;
+}
+
+button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: var(--text-h);
+  background: var(--button-bg);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent-border);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.auth-form button,
+.session-box button {
+  color: var(--accent);
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+}
+
+.auth-form {
+  display: grid;
+  gap: 12px;
+}
+
+.auth-form label {
+  display: block;
+}
+
+.auth-form label span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.auth-form input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 13px 14px;
+  color: var(--text-h);
+  background: var(--input-bg);
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.auth-form input::placeholder {
+  color: var(--placeholder);
+}
+
+.auth-form input:focus {
+  border-color: var(--accent-border);
+  outline: 2px solid var(--accent-bg);
+}
+
+.auth-form button {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.auth-switch {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 15px;
+}
+
+.auth-switch a {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.auth-switch a:hover {
+  text-decoration: underline;
+}
+
+.session-box {
+  display: grid;
+  gap: 16px;
+}
+
+.session-box code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.session-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-h);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.feedback {
+  margin-top: 18px;
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 15px;
+}
+
+.feedback.success {
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.feedback.error {
+  color: var(--error);
+  background: var(--error-bg);
+}
+
+@media (max-width: 560px) {
+  .auth-panel {
+    padding: 24px;
+  }
+}
