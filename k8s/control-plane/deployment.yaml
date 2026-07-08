@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-plane
+  namespace: deepmesh
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: control-plane
+  template:
+    metadata:
+      labels:
+        app: control-plane
+    spec:
+      serviceAccountName: control-plane-sa
+      containers:
+        - name: control-plane
+          image: uicheolshin/control-plane:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: NAMESPACE
+              value: deepmesh
+            - name: UPDATE_INTERVAL
+              value: "30"
+            - name: KNOWN_SERVICES
+              value: "auth-service,post-service,comment-service"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
