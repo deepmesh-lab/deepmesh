@@ -1,0 +1,11 @@
+{
+  "threshold_df": -2.59624970148234,
+  "target_fpr": 0.01,
+  "gamma": "1.0",
+  "nu": 0.1,
+  "l2": false,
+  "arch": "2x8",
+  "teacher": "shallow",
+  "mask_transport": true,
+  "vec_len": 1479
+}

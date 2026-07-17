@@ -1,0 +1,21 @@
+{
+  "service": "mysql",
+  "n_benign_train": 37948,
+  "n_benign_val": 12052,
+  "n_attack_eval": 12052,
+  "arch": "2x8",
+  "teacher": "shallow",
+  "l2": false,
+  "gamma": "0.1",
+  "nu": 0.1,
+  "val_roc_auc": 0.9993,
+  "val_pr_auc": 0.9994,
+  "threshold_df": -4.441204387785838,
+  "target_fpr": 0.01,
+  "val_fpr_at_thr": 0.01,
+  "val_recall_at_thr": 0.9968,
+  "val_fpr_at_0": 0.1269,
+  "val_recall_at_0": 0.9969,
+  "attack_used": true,
+  "mask_transport": true
+}

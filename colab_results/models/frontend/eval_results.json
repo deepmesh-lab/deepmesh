@@ -1,0 +1,21 @@
+{
+  "service": "frontend",
+  "n_benign_train": 16583,
+  "n_benign_val": 2092,
+  "n_attack_eval": 2092,
+  "arch": "2x8",
+  "teacher": "shallow",
+  "l2": false,
+  "gamma": "1.0",
+  "nu": 0.1,
+  "val_roc_auc": 0.9998,
+  "val_pr_auc": 0.9998,
+  "threshold_df": -2.59624970148234,
+  "target_fpr": 0.01,
+  "val_fpr_at_thr": 0.01,
+  "val_recall_at_thr": 0.9976,
+  "val_fpr_at_0": 0.3164,
+  "val_recall_at_0": 1.0,
+  "attack_used": true,
+  "mask_transport": true
+}
