@@ -31,7 +31,27 @@ __pycache__/
 *.pyc
 *.pth
 *.pkl
+*.pt
 .venv/
+
+# 데이터셋 / 캡처 (대용량 — 재현은 collect.md 절차로)
+*.pcap
+*.npy
+result/
+training/data/
+# local_files/ 는 locust/ 의 VM 업로드용 복사본(중복) → 제외
+local_files/
+
+# 컴파일 산출물 / 아카이브
+*.so
+*.zip
+
+# 모델 바이너리는 제외하되 작은 산출물(JSON) + 시각화(PNG)는 유지
+# (colab_results/**/*.pth,*.pkl,*.pt 는 위 규칙으로 이미 제외)
+
+# 논문 원문 / 스크래치 (저작권·임시)
+grad.pdf
+scratch_grad.txt
 
 # Claude Code / Superpowers (내부 도구)
 .claude/
