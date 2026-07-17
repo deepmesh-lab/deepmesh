@@ -1,0 +1,48 @@
+{
+  "data": "C:\\k8s-msa\\training\\data",
+  "per_service": [
+    {
+      "svc": "auth",
+      "n_train": 60000,
+      "n_test": 14309,
+      "train_int_test": 0,
+      "attack_int_train": 0,
+      "attack_int_test": 0
+    },
+    {
+      "svc": "post",
+      "n_train": 60000,
+      "n_test": 15472,
+      "train_int_test": 0,
+      "attack_int_train": 0,
+      "attack_int_test": 0
+    },
+    {
+      "svc": "comment",
+      "n_train": 60000,
+      "n_test": 26115,
+      "train_int_test": 0,
+      "attack_int_train": 0,
+      "attack_int_test": 0
+    },
+    {
+      "svc": "frontend",
+      "n_train": 18675,
+      "n_test": 4499,
+      "train_int_test": 0,
+      "attack_int_train": 0,
+      "attack_int_test": 0
+    },
+    {
+      "svc": "mysql",
+      "n_train": 60000,
+      "n_test": 30000,
+      "train_int_test": 0,
+      "attack_int_train": 0,
+      "attack_int_test": 0
+    }
+  ],
+  "brute_int_k8s": 0,
+  "total_leaks": 0,
+  "passed": true
+}
