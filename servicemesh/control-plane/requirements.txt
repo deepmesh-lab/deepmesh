@@ -1,0 +1,2 @@
+aiohttp>=3.9
+kubernetes>=29.0
