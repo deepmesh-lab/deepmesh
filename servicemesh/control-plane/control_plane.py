@@ -42,6 +42,55 @@ CLEANUP_INTERVAL = 60
 PUSH_TIMEOUT = aiohttp.ClientTimeout(total=3)
 
 
+class PodInfoProvider:
+    """서비스별 Pod IP 레지스트리를 유지하고, 각 Proxy에 형제 Pod 목록을 push한다."""
+
+    def __init__(self, v1):
+        self._v1 = v1
+        self.registry = {}          # {서비스: [{"name": ..., "ip": ...}, ...]}
+        self._ip_to_service = {}    # {Pod IP: 서비스}
+        self._last_snapshot = None  # 변경 시에만 로그를 남기기 위한 직전 상태
+
+    def service_of(self, pod_ip):
+        return self._ip_to_service.get(pod_ip)
+
+    def _list_sidecar_pods(self):
+        # kubernetes client는 동기 호출 — run_in_executor로 실행해 이벤트 루프를 막지 않는다
+        pods = self._v1.list_namespaced_pod(namespace=NAMESPACE)
+        registry = {}
+        for pod in pods.items:
+            if pod.status is None or pod.status.phase != "Running" or not pod.status.pod_ip:
+                continue
+            if SIDECAR_CONTAINER not in [c.name for c in pod.spec.containers]:
+                continue
+            service = (pod.metadata.labels or {}).get("app")
+            if not service:
+                continue
+            registry.setdefault(service, []).append(
+                {"name": pod.metadata.name, "ip": pod.status.pod_ip}
+            )
+        return registry
+
+    async def update_registry(self):
+        loop = asyncio.get_running_loop()
+        try:
+            registry = await loop.run_in_executor(None, self._list_sidecar_pods)
+        except Exception as exc:
+            # 일시적 API 오류로 레지스트리를 비우면 검증이 전부 400이 되므로 기존 상태를 유지한다
+            logger.error("Pod 조회 실패 — 기존 레지스트리 유지: %s", exc)
+            return
+
+        snapshot = {svc: sorted(p["ip"] for p in pods) for svc, pods in registry.items()}
+        if snapshot != self._last_snapshot:
+            logger.info("레지스트리 갱신: %s", snapshot)
+            self._last_snapshot = snapshot
+
+        self.registry = registry
+        self._ip_to_service = {
+            p["ip"]: svc for svc, pods in registry.items() for p in pods
+        }
+
+
 
 class RequestVerifier:
     """outbound 내부 요청 시그니처를 서비스 단위로 교차 검증한다.
