@@ -166,3 +166,82 @@ class RequestVerifier:
             removed = self.cleanup_expired()
             if removed:
                 logger.info("만료 시그니처 %d건 정리", removed)
+
+
+def build_app(provider, verifier):
+    async def verify_request(request):
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response(
+                {"allow": False, "reason": "요청 body 파싱 실패"}, status=400
+            )
+
+        source_ip = data.get("source_ip")
+        signature = data.get("signature_data")
+        if not source_ip or not signature:
+            return web.json_response(
+                {"allow": False, "reason": "source_ip 또는 signature_data 누락"}, status=400
+            )
+
+        service = provider.service_of(source_ip)
+        if service is None:
+            return web.json_response(
+                {"allow": False, "reason": "레지스트리에 없는 Pod: {}".format(source_ip)},
+                status=400,
+            )
+
+        allow, reason = verifier.verify(service, source_ip, signature)
+        logger.info(
+            "verify: service=%s src=%s allow=%s sig=%s", service, source_ip, allow, signature
+        )
+        return web.json_response({"allow": allow, "reason": reason})
+
+    async def status(request):
+        return web.json_response({
+            "status": "ok",
+            "pods": {
+                svc: [p["ip"] for p in pods] for svc, pods in provider.registry.items()
+            },
+        })
+
+    app = web.Application()
+    app.router.add_post("/verify/request", verify_request)
+    app.router.add_get("/status", status)
+    return app
+
+
+async def main():
+    # master 노드 호스트 프로세스 실행 전제 — kubeconfig(~/.kube/config)로 인증한다
+    config.load_kube_config()
+    v1 = client.CoreV1Api()
+
+    provider = PodInfoProvider(v1)
+    verifier = RequestVerifier()
+
+    runner = web.AppRunner(build_app(provider, verifier))
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", LISTEN_PORT)
+    await site.start()
+    logger.info(
+        "Control Plane 시작 — :%d, namespace=%s, poll=%ds, ttl=%ds",
+        LISTEN_PORT, NAMESPACE, POLL_INTERVAL, SIGNATURE_TTL,
+    )
+
+    tasks = [
+        asyncio.create_task(provider.run()),
+        asyncio.create_task(verifier.run_cleanup()),
+    ]
+    try:
+        await asyncio.gather(*tasks)
+    finally:
+        for task in tasks:
+            task.cancel()
+        await runner.cleanup()
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("사용자 종료")
