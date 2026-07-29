@@ -90,6 +90,32 @@ class PodInfoProvider:
             p["ip"]: svc for svc, pods in registry.items() for p in pods
         }
 
+    async def push_to_proxies(self, session):
+        tasks = []
+        for pods in self.registry.values():
+            for pod in pods:
+                siblings = [p for p in pods if p["ip"] != pod["ip"]]
+                tasks.append(self._push_one(session, pod, siblings))
+        if tasks:
+            await asyncio.gather(*tasks)
+
+    async def _push_one(self, session, pod, siblings):
+        url = "http://{}:{}/receive/pods_ip".format(pod["ip"], PROXY_PORT)
+        payload = {"name": pod["name"], "ip": pod["ip"], "pods_ip": siblings}
+        try:
+            async with session.post(url, json=payload, timeout=PUSH_TIMEOUT) as resp:
+                if resp.status != 200:
+                    logger.warning("push 실패 %s → status %d", url, resp.status)
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            # 기동·종료 중인 Pod은 흔한 경우 — 다음 주기에 자동 재시도되므로 조용히 넘어간다
+            pass
+
+    async def run(self):
+        async with aiohttp.ClientSession() as session:
+            while True:
+                await self.update_registry()
+                await self.push_to_proxies(session)
+                await asyncio.sleep(POLL_INTERVAL)
 
 
 class RequestVerifier:
