@@ -14,17 +14,20 @@ spec:
         app: post-service
     spec:
       initContainers:
+        # 사이드카와 같은 이미지를 쓰되 root로 실행한다 (iptables 규칙 주입).
         - name: iptables-init
-          image: uicheolshin/reverse-proxy:latest
+          image: kimgooner/reverse-proxy:v2
           command: ["sh", "/app/iptables-init.sh"]
+          env:
+            - name: TARGET_PORT
+              value: "8080"
+            - name: PROXY_PORT
+              value: "9011"
+            - name: PROXY_UID
+              value: "1337"
           securityContext:
             capabilities:
               add: ["NET_ADMIN"]
-
-      volumes:
-        - name: model-volume
-          persistentVolumeClaim:
-            claimName: post-service-model-pvc
 
       containers:
         - name: post-service
@@ -59,15 +62,28 @@ spec:
             periodSeconds: 10
             failureThreshold: 3
 
+        # 컨테이너 이름은 바꾸지 말 것 — Control Plane의 Pod 디스커버리 기준이다
+        # (SIDECAR_CONTAINER=reverse-proxy)
         - name: reverse-proxy
-          image: uicheolshin/reverse-proxy:latest
+          image: kimgooner/reverse-proxy:v2
           ports:
             - containerPort: 9011
+          securityContext:
+            # iptables-init.sh의 `--uid-owner 1337 -j RETURN`과 짝이다. 어긋나면
+            # 프록시가 전달하는 트래픽이 자기 자신에게 다시 리다이렉트된다.
+            runAsUser: 1337
+            capabilities:
+              # AF_PACKET raw 소켓으로 프레임을 캡처하는 데 필요하다.
+              # 이미지의 python 바이너리에 파일 capability(cap_net_raw+ep)가 붙어 있어
+              # 여기서 drop하면 탐지가 꺼지는 게 아니라 사이드카가 기동하지 못한다.
+              add: ["NET_RAW"]
           env:
             - name: TARGET_PORT
               value: "8080"
             - name: PROXY_PORT
               value: "9011"
+            - name: SNIFF_IFACE
+              value: "lo"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -79,8 +95,8 @@ spec:
                 configMapKeyRef:
                   name: deepmesh-config
                   key: CONTROL_PLANE_URL
-            - name: MODEL_DIR
-              value: /app/model
-          volumeMounts:
-            - name: model-volume
-              mountPath: /app/model
+          readinessProbe:
+            tcpSocket:
+              port: 9011
+            initialDelaySeconds: 3
+            periodSeconds: 5
