@@ -19,6 +19,8 @@ API:
 """
 
 import asyncio
+import functools
+import json
 import logging
 import os
 import time
@@ -40,6 +42,7 @@ SIGNATURE_TTL = int(os.environ.get("SIGNATURE_TTL", "600"))
 
 CLEANUP_INTERVAL = 60
 PUSH_TIMEOUT = aiohttp.ClientTimeout(total=3)
+dumps_kr = functools.partial(json.dumps, ensure_ascii=False)
 
 
 class PodInfoProvider:
@@ -174,36 +177,59 @@ def build_app(provider, verifier):
             data = await request.json()
         except Exception:
             return web.json_response(
-                {"allow": False, "reason": "요청 body 파싱 실패"}, status=400
+                {
+                    "allow": False, 
+                    "reason": "요청 body 파싱 실패"
+                }, 
+                status=400,
+                dumps=dumps_kr
             )
 
         source_ip = data.get("source_ip")
         signature = data.get("signature_data")
         if not source_ip or not signature:
             return web.json_response(
-                {"allow": False, "reason": "source_ip 또는 signature_data 누락"}, status=400
+                {
+                    "allow": False, 
+                    "reason": "source_ip 또는 signature_data 누락"
+                }, 
+                status=400,
+                dumps=dumps_kr
             )
 
         service = provider.service_of(source_ip)
         if service is None:
             return web.json_response(
-                {"allow": False, "reason": "레지스트리에 없는 Pod: {}".format(source_ip)},
+                {
+                    "allow": False, 
+                    "reason": "레지스트리에 없는 Pod: {}".format(source_ip)
+                },
                 status=400,
+                dumps=dumps_kr
             )
 
         allow, reason = verifier.verify(service, source_ip, signature)
         logger.info(
             "verify: service=%s src=%s allow=%s sig=%s", service, source_ip, allow, signature
         )
-        return web.json_response({"allow": allow, "reason": reason})
+        return web.json_response(
+            {
+                "allow": allow, 
+                "reason": reason
+            },
+            dumps=dumps_kr
+        )
 
     async def status(request):
-        return web.json_response({
-            "status": "ok",
-            "pods": {
-                svc: [p["ip"] for p in pods] for svc, pods in provider.registry.items()
+        return web.json_response(
+            {
+                "status": "ok",
+                "pods": {
+                    svc: [p["ip"] for p in pods] for svc, pods in provider.registry.items()
+                },
             },
-        })
+            dumps=dumps_kr
+        )
 
     app = web.Application()
     app.router.add_post("/verify/request", verify_request)
