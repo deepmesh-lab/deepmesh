@@ -17,7 +17,7 @@ spec:
         # 사이드카와 같은 이미지를 쓰되 root로 실행한다 (iptables 규칙 주입).
         - name: iptables-init
           image: kimgooner/reverse-proxy:v2
-          command: ["sh", "/app/iptables-init.sh"]
+          command: ["sh", "/app/iptables.sh"]
           env:
             - name: TARGET_PORT
               value: "8080"
@@ -69,7 +69,7 @@ spec:
           ports:
             - containerPort: 9011
           securityContext:
-            # iptables-init.sh의 `--uid-owner 1337 -j RETURN`과 짝이다. 어긋나면
+            # iptables.sh의 `--uid-owner 1337 -j RETURN`과 짝이다. 어긋나면
             # 프록시가 전달하는 트래픽이 자기 자신에게 다시 리다이렉트된다.
             runAsUser: 1337
             capabilities:

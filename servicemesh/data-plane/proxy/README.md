@@ -90,7 +90,11 @@ traffic_handler/
   config.py         환경변수
   stubs.py          테스트용 대역
 main.py             엔트리포인트
-iptables-init.sh    initContainer가 실행하는 리다이렉트 규칙
+
+../iptables.sh        initContainer가 실행하는 리다이렉트 규칙 (data-plane/)
+../Dockerfile         프록시 컨테이너 이미지 (data-plane/)
+../requirements.txt   런타임 의존성 (data-plane/)
+../model/             배포용 학습 모델 (.pt/.pkl) — 시하님 산출물
 ```
 
 ## 탐지 모듈 붙이기
@@ -136,7 +140,7 @@ DETECTION_ENGINE_FACTORY=모듈:팩토리                          # 융합형
 ## 실행
 
 ```bash
-cd servicemesh/proxy
+cd servicemesh/data-plane/proxy
 python main.py
 ```
 
@@ -156,7 +160,7 @@ python main.py
 ## 테스트
 
 ```bash
-cd servicemesh/proxy && python -m pytest tests -q
+cd servicemesh/data-plane/proxy && python -m pytest tests -q
 ```
 
 Relay·Drop 분기는 실제 loopback 소켓 위에서 가짜 메인 컨테이너·형제 Pod·Control Plane을
@@ -165,7 +169,7 @@ Relay·Drop 분기는 실제 loopback 소켓 위에서 가짜 메인 컨테이�
 ## 배포
 
 ```bash
-docker build -t <레지스트리>/reverse-proxy:<태그> servicemesh/proxy
+docker build -t <레지스트리>/reverse-proxy:<태그> servicemesh/data-plane
 docker push <레지스트리>/reverse-proxy:<태그>
 kubectl -n deepmesh apply -f k8s/post-service/deployment-with-sidecar.yaml
 ```
@@ -174,7 +178,7 @@ kubectl -n deepmesh apply -f k8s/post-service/deployment-with-sidecar.yaml
 
 - 사이드카 컨테이너 이름은 **`reverse-proxy`** 를 유지한다. Control Plane의 Pod
   디스커버리 기준이다. 바꾸면 주소록 push가 끊기고 검증 API가 전부 400이 된다.
-- 사이드카는 `runAsUser: 1337`. `iptables-init.sh`의 `--uid-owner`와 짝이다. 어긋나면
+- 사이드카는 `runAsUser: 1337`. `iptables.sh`의 `--uid-owner`와 짝이다. 어긋나면
   프록시가 전달하는 트래픽이 자기 자신에게 다시 리다이렉트되어 루프에 빠진다.
 - 사이드카에 `NET_RAW`가 필요하다. 이미지의 python 바이너리에 파일 capability가 붙어
   있어서, drop하면 탐지가 꺼지는 게 아니라 **컨테이너가 아예 기동하지 못한다.**

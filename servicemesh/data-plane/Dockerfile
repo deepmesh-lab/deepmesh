@@ -2,17 +2,20 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# iptables는 initContainer가 같은 이미지로 iptables-init.sh를 실행하기 위해 필요하다.
+# iptables는 initContainer가 같은 이미지로 iptables.sh를 실행하기 위해 필요하다.
 # libcap2-bin은 아래 setcap에 쓴다.
 RUN apt-get update && apt-get install -y --no-install-recommends iptables libcap2-bin && \
     rm -rf /var/lib/apt/lists/*
 
+# 빌드 컨텍스트는 data-plane/ 이다. 런타임 의존성과 iptables 스크립트는 data-plane/ 에,
+# 프록시 코드는 proxy/ 하위에 있다.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY proxy/ ./
+COPY iptables.sh ./
 
-# iptables OUTPUT의 owner 매칭 대상 uid. iptables-init.sh의 PROXY_UID와 같아야 한다.
+# iptables OUTPUT의 owner 매칭 대상 uid. iptables.sh의 PROXY_UID와 같아야 한다.
 # 이 uid로 '실행'하는 지정은 여기서 하지 않는다 — 같은 이미지를 initContainer가
 # iptables 실행에 재사용하는데 그건 root여야 하기 때문이다. 컨테이너별 uid는
 # 매니페스트의 securityContext.runAsUser로 정한다 (사이드카만 1337).
