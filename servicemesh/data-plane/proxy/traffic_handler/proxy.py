@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from . import http_message, signature as sig
 from .ports import SessionKey
 from .relay import RELAY_MARKER
+from .telemetry import build_event
 
 logger = logging.getLogger("traffic-handler.proxy")
 
@@ -31,6 +32,16 @@ LOCALHOST = "127.0.0.1"
 FORWARD = "forward"
 DROP = "drop"
 RELAY = "relay"
+
+# 백엔드로 보낼 verdict / category / 검증 단계 라벨 (TELEMETRY_API.md)
+VERDICT_FORWARD = "FORWARD"
+VERDICT_DROP = "DROP"
+VERDICT_RELAY = "RELAY"
+CAT_CLEARED = "cleared"
+CAT_DROP = "drop"
+CAT_RELAY = "relay"
+STAGE_REQUEST = "REQUEST_VERIFIER"
+STAGE_RESPONSE = "RESPONSE_CONSISTENCY"
 
 
 @dataclass
@@ -75,14 +86,23 @@ def original_dst(sock):
 
 class TrafficHandler:
     def __init__(self, config, verdicts, peers, control_plane, relay_client,
-                 resolve_dst=None):
+                 resolve_dst=None, telemetry=None):
         self.config = config
         self.verdicts = verdicts
         self.peers = peers
         self.control_plane = control_plane
         self.relay = relay_client
+        self.telemetry = telemetry
         # 원목적지 해석기. 테스트에서는 NAT이 없으므로 대역을 주입한다.
         self.resolve_dst = resolve_dst or original_dst
+
+    def _emit(self, observation, verdict, category, stage, passed, signature):
+        """집행 결과를 텔레메트리로 보낸다. telemetry가 없으면 무시."""
+        if self.telemetry is None:
+            return
+        self.telemetry.emit(
+            build_event(observation, verdict, category, stage, passed, signature)
+        )
 
     # -- 진입점 --------------------------------------------------------------
 
@@ -142,8 +162,10 @@ class TrafficHandler:
             target = first_request.target if is_http else "{}:{}".format(*dst)
             if not await self.control_plane.verify(signature):
                 self._log(DROP, kind, method, target, detection)
+                self._emit(detection, VERDICT_DROP, CAT_DROP, STAGE_REQUEST, False, signature)
                 return  # Algorithm 1 line 19-20: Drop 후 종료
             self._log(FORWARD, kind + "(검증 통과)", method, target, detection)
+            self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_REQUEST, True, signature)
 
         upstream_ip = LOCALHOST if dst[0] == self.config.pod_ip else dst[0]
         try:
@@ -198,10 +220,15 @@ class TrafficHandler:
                 break
             detection = self.verdicts.get_any(sessions)
             if detection is not None and detection.is_malicious:
-                if not await self.control_plane.verify(self._signature(request, dst)):
+                signature = self._signature(request, dst)
+                if not await self.control_plane.verify(signature):
                     self._log(DROP, "outbound request", request.method, request.target,
                               detection)
+                    self._emit(detection, VERDICT_DROP, CAT_DROP, STAGE_REQUEST, False,
+                               signature)
                     return
+                self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_REQUEST, True,
+                           signature)
 
     # -- 3번: inbound 연결의 응답 (Relay 경로) -------------------------------
 
@@ -245,7 +272,8 @@ class TrafficHandler:
                 if response is None:
                     break
 
-                response, action = await self._apply_response_policy(request, response, sessions)
+                response, action = await self._apply_response_policy(
+                    request, response, sessions, dst)
                 client_writer.write(response.to_bytes())
                 await client_writer.drain()
 
@@ -256,7 +284,7 @@ class TrafficHandler:
         finally:
             _close(up_writer)
 
-    async def _apply_response_policy(self, request, response, sessions):
+    async def _apply_response_policy(self, request, response, sessions, dst):
         """Algorithm 1 line 10~15. 이상 응답을 형제 Pod의 참조 응답으로 교체한다."""
         detection = self.verdicts.get_any(sessions)
         if detection is None or not detection.is_malicious:
@@ -286,13 +314,17 @@ class TrafficHandler:
                       request.target, detection)
             return response, FORWARD
 
+        signature = self._signature(request, dst)
         if reference.body == response.body:
             # IsContentEqual → 교체하지 않는다 (오탐으로 본다)
             self._log(FORWARD, "outbound response(내용 일치)", request.method,
                       request.target, detection)
+            self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_RESPONSE, True,
+                       signature)
             return response, FORWARD
 
         self._log(RELAY, "outbound response", request.method, request.target, detection)
+        self._emit(detection, VERDICT_RELAY, CAT_RELAY, STAGE_RESPONSE, False, signature)
         return reference, RELAY
 
     # -- 1번: 관리 엔드포인트 ------------------------------------------------

@@ -28,12 +28,13 @@ logger = logging.getLogger("traffic-handler.detection")
 
 
 class DetectionPipeline:
-    def __init__(self, source, adapter, verdicts, target_port, proxy_port):
+    def __init__(self, source, adapter, verdicts, target_port, proxy_port, telemetry=None):
         self._source = source
         self._adapter = adapter
         self._verdicts = verdicts
         self._target_port = target_port
         self._proxy_port = proxy_port
+        self._telemetry = telemetry
         self._max_sessions = adapter.max_sessions
         self._stop = threading.Event()
         self._thread = None
@@ -60,6 +61,10 @@ class DetectionPipeline:
             dst_ip=key.dst_ip, dst_port=key.dst_port,
         )
         self._verdicts.put(session_id, observation)
+        # benign 시퀀스는 개별 이벤트가 없으므로 집계 카운터만 올린다.
+        # cleared/drop/relay는 집행 경로에서 emit되며 그때 집계된다.
+        if self._telemetry is not None and not detection.is_malicious:
+            self._telemetry.incr("benign")
         if detection.is_malicious:
             logger.warning(
                 "이상 판정: session=%d score=%.4f dir=%s %s:%d→%s:%d",

@@ -21,6 +21,7 @@ from traffic_handler.packet_source import AfPacketSource
 from traffic_handler.peers import PeerRegistry
 from traffic_handler.proxy import HandlerConfig, TrafficHandler
 from traffic_handler.relay import RelayClient
+from traffic_handler.telemetry import TelemetryClient
 from traffic_handler.verdicts import VerdictStore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -61,6 +62,22 @@ async def main():
     relay_client = RelayClient(
         peers, config.TARGET_PORT, config.RELAY_TIMEOUT, config.MAX_BODY_BYTES
     )
+    telemetry = TelemetryClient(
+        config.DASHBOARD_URL,
+        proxy_meta={
+            "serviceName": config.SERVICE_NAME,
+            "podName": config.POD_NAME,
+            "podIp": config.POD_IP,
+            "nodeName": config.NODE_NAME,
+            "namespace": config.NAMESPACE,
+        },
+        interval=config.TELEMETRY_INTERVAL,
+        queue_max=config.TELEMETRY_QUEUE_MAX,
+        timeout=config.TELEMETRY_TIMEOUT,
+    )
+    logger.info(
+        "텔레메트리: %s", config.DASHBOARD_URL if telemetry.enabled else "비활성(DASHBOARD_URL 없음)"
+    )
 
     handler_config = HandlerConfig(
         pod_ip=config.POD_IP,
@@ -72,15 +89,20 @@ async def main():
         max_body_bytes=config.MAX_BODY_BYTES,
         relay_safe_methods=config.RELAY_SAFE_METHODS,
     )
-    handler = TrafficHandler(handler_config, verdicts, peers, control_plane, relay_client)
+    handler = TrafficHandler(
+        handler_config, verdicts, peers, control_plane, relay_client, telemetry=telemetry
+    )
 
     pipeline = DetectionPipeline(
         AfPacketSource(config.SNIFF_IFACE), adapter, verdicts,
-        config.TARGET_PORT, config.PROXY_PORT,
+        config.TARGET_PORT, config.PROXY_PORT, telemetry=telemetry,
     )
     # 캡처를 시작하지 못하면(NET_RAW capability 없음 등) 탐지 스레드가 로그를 남기고
     # 종료한다. 프록시는 Forward 전용으로 계속 동작한다.
     pipeline.start()
+
+    # 텔레메트리 배치 전송 루프 (DASHBOARD_URL 없으면 즉시 반환)
+    telemetry_task = asyncio.create_task(telemetry.run())
 
     server = await asyncio.start_server(handler.handle, "0.0.0.0", config.PROXY_PORT)
     logger.info(
@@ -92,6 +114,7 @@ async def main():
         async with server:
             await server.serve_forever()
     finally:
+        telemetry_task.cancel()
         pipeline.stop()
         await control_plane.close()
 

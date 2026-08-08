@@ -24,6 +24,17 @@ TARGET_PORT = _int("TARGET_PORT", 8080)        # 메인 컨테이너(백엔드) 
 PROXY_PORT = _int("PROXY_PORT", 9011)          # iptables가 리다이렉트하는 프록시 포트
 POD_IP = os.environ.get("POD_IP", "127.0.0.1")
 SERVICE_NAME = os.environ.get("SERVICE_NAME", "unknown")
+# downward API로 주입받는 Pod 메타. 텔레메트리 이벤트의 출처 식별에 쓴다.
+POD_NAME = os.environ.get("POD_NAME", "unknown")
+NODE_NAME = os.environ.get("NODE_NAME", "unknown")
+NAMESPACE = os.environ.get("NAMESPACE", "default")
+
+# --- 텔레메트리 (프록시 → 대시보드 백엔드) ---------------------------------
+# 비어 있으면 텔레메트리 발신이 통째로 비활성이다.
+DASHBOARD_URL = os.environ.get("DASHBOARD_URL", "").rstrip("/")
+TELEMETRY_INTERVAL = _float("TELEMETRY_INTERVAL", 1.0)
+TELEMETRY_QUEUE_MAX = _int("TELEMETRY_QUEUE_MAX", 10000)
+TELEMETRY_TIMEOUT = _float("TELEMETRY_TIMEOUT", 2.0)
 
 # --- Control Plane ----------------------------------------------------------
 CONTROL_PLANE_URL = os.environ.get("CONTROL_PLANE_URL", "http://127.0.0.1:8080").rstrip("/")
