@@ -3,7 +3,7 @@
 
 import struct
 
-from .ports import IPPROTO_TCP, SessionKey
+from .ports import IPPROTO_TCP, REQUEST, RESPONSE, SessionKey
 
 ETH_HDR_LEN = 14
 ETHERTYPE_IPV4 = 0x0800
@@ -48,3 +48,17 @@ def is_from_main_container(key, target_port, proxy_port):
     lateral movement라 침해된 Pod에서 '나가는' 트래픽만 검사한다.
     """
     return key.dst_port == proxy_port or key.src_port == target_port
+
+
+def last_packet_direction(key, target_port, proxy_port):
+    """탐지 대상 프레임이 요청이냐 응답이냐 — Algorithm 1의 T_main.type.
+
+    is_from_main_container와 같은 포트 기준을 쓴다. 집행 경로가 연결 종류로 추론하는
+    대신, 탐지 경로가 프레임에서 직접 읽어 판정과 함께 저장하기 위한 것이다.
+    탐지 대상이 아니면 None.
+    """
+    if key.dst_port == proxy_port:
+        return REQUEST      # 메인 컨테이너가 outbound 요청을 냄
+    if key.src_port == target_port:
+        return RESPONSE     # 메인 컨테이너가 서버로서 응답을 냄
+    return None

@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 from conftest import make_frame
 
-from traffic_handler.ports import SessionKey
-from traffic_handler.session import is_from_main_container, parse_session
+from traffic_handler.ports import REQUEST, RESPONSE, SessionKey
+from traffic_handler.session import (
+    is_from_main_container, last_packet_direction, parse_session,
+)
 
 TARGET_PORT = 8080
 PROXY_PORT = 9011
@@ -55,3 +57,17 @@ class TestIsFromMainContainer:
     def test_프록시가_메인에_돌려주는_응답은_탐지_대상이_아니다(self):
         key = SessionKey("127.0.0.1", "127.0.0.1", PROXY_PORT, 41234)
         assert not is_from_main_container(key, TARGET_PORT, PROXY_PORT)
+
+
+class TestLastPacketDirection:
+    def test_프록시_포트로_오는_것은_요청이다(self):
+        key = SessionKey("127.0.0.1", "127.0.0.1", 41234, PROXY_PORT)
+        assert last_packet_direction(key, TARGET_PORT, PROXY_PORT) == REQUEST
+
+    def test_타깃_포트에서_나가는_것은_응답이다(self):
+        key = SessionKey("127.0.0.1", "127.0.0.1", TARGET_PORT, 41235)
+        assert last_packet_direction(key, TARGET_PORT, PROXY_PORT) == RESPONSE
+
+    def test_탐지_대상이_아니면_None(self):
+        key = SessionKey("127.0.0.1", "127.0.0.1", 41235, TARGET_PORT)
+        assert last_packet_direction(key, TARGET_PORT, PROXY_PORT) is None

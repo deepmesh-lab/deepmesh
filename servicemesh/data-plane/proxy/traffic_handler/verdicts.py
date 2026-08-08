@@ -7,9 +7,11 @@
 import threading
 import time
 
+from .ports import Detection, SessionObservation
+
 
 class VerdictStore:
-    """session_id → (Detection, 기록 시각). TTL이 지난 판정은 없는 것으로 본다."""
+    """session_id → (SessionObservation, 기록 시각). TTL이 지난 판정은 없는 것으로 본다."""
 
     def __init__(self, ttl, clock=time.monotonic):
         self._ttl = ttl
@@ -17,23 +19,27 @@ class VerdictStore:
         self._lock = threading.Lock()
         self._verdicts = {}
 
-    def put(self, session_id, detection):
+    def put(self, session_id, observation):
+        """관측을 기록한다. 편의상 Detection만 넘겨도 메타 없는 관측으로 감싼다."""
+        if isinstance(observation, Detection):
+            observation = SessionObservation(detection=observation)
         with self._lock:
-            self._verdicts[session_id] = (detection, self._clock())
+            self._verdicts[session_id] = (observation, self._clock())
 
     def get(self, session_id):
+        """세션의 SessionObservation을 반환한다. TTL 초과·미기록이면 None."""
         with self._lock:
             entry = self._verdicts.get(session_id)
             if entry is None:
                 return None
-            detection, ts = entry
+            observation, ts = entry
             if self._clock() - ts > self._ttl:
                 del self._verdicts[session_id]
                 return None
-            return detection
+            return observation
 
     def get_any(self, session_ids):
-        """후보 id 중 하나라도 이상 판정이면 그것을 돌려준다.
+        """후보 id 중 하나라도 이상 판정이면 그 관측을 돌려준다.
 
         하나의 프록시 연결은 클라이언트 쪽과 upstream 쪽에서 서로 다른 5-tuple을 가진다
         (프록시가 중간에서 소켓을 새로 열기 때문). 스니퍼가 둘 중 어느 쪽을 봤는지에
@@ -41,12 +47,12 @@ class VerdictStore:
         """
         found = None
         for session_id in session_ids:
-            detection = self.get(session_id)
-            if detection is None:
+            observation = self.get(session_id)
+            if observation is None:
                 continue
-            if detection.is_malicious:
-                return detection
-            found = detection
+            if observation.is_malicious:
+                return observation
+            found = observation
         return found
 
     def purge_expired(self):

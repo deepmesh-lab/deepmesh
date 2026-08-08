@@ -52,6 +52,30 @@ def test_윈도우가_차면_판정이_기록된다():
     assert verdicts.get(session_id).is_malicious
 
 
+def test_판정에_방향과_5tuple이_함께_기록된다():
+    session_id = SessionKey("127.0.0.1", "127.0.0.1", TARGET_PORT, 41234).session_id(1024)
+    pipeline, verdicts = build(ScriptedDetector({session_id}))
+    for _ in range(WINDOW):
+        pipeline.process_frame(outbound_response_frame())
+
+    obs = verdicts.get(session_id)
+    assert obs.direction == "RESPONSE"        # src_port == TARGET_PORT
+    assert obs.src_ip == "127.0.0.1" and obs.src_port == TARGET_PORT
+    assert obs.dst_port == 41234
+
+
+def test_요청_방향도_기록된다():
+    # dst_port == PROXY_PORT 인 프레임 = outbound 요청
+    frame = make_frame("127.0.0.1", "127.0.0.1", 41500, PROXY_PORT)
+    session_id = SessionKey("127.0.0.1", "127.0.0.1", 41500, PROXY_PORT).session_id(1024)
+    pipeline, verdicts = build(ScriptedDetector({session_id}),
+                               frames=[frame for _ in range(WINDOW)])
+    pipeline.run()
+
+    obs = verdicts.get(session_id)
+    assert obs.direction == "REQUEST"
+
+
 def test_메인_컨테이너로_들어가는_트래픽은_탐지하지_않는다():
     pipeline, verdicts = build(AlwaysNormalDetector())
     for _ in range(WINDOW * 2):

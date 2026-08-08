@@ -21,7 +21,8 @@ ParseMeta·GetSessionID가 Traffic Handler의 몫이고, 그 뒤는 전부 종�
 import logging
 import threading
 
-from .session import is_from_main_container, parse_session
+from .ports import SessionObservation
+from .session import is_from_main_container, last_packet_direction, parse_session
 
 logger = logging.getLogger("traffic-handler.detection")
 
@@ -50,14 +51,22 @@ class DetectionPipeline:
         if detection is None:
             return None  # 윈도우 미충족 — Algorithm 1 line 6의 조건 미달
 
-        self._verdicts.put(session_id, detection)
+        # 마지막 패킷의 방향과 5-tuple을 판정과 함께 기록한다. 집행 경로가 연결 종류로
+        # 추론하는 대신 여기서 관측한 값을 쓰고, 텔레메트리가 그대로 실어 보낸다.
+        observation = SessionObservation(
+            detection=detection,
+            direction=last_packet_direction(key, self._target_port, self._proxy_port),
+            src_ip=key.src_ip, src_port=key.src_port,
+            dst_ip=key.dst_ip, dst_port=key.dst_port,
+        )
+        self._verdicts.put(session_id, observation)
         if detection.is_malicious:
             logger.warning(
-                "이상 판정: session=%d score=%.4f %s:%d→%s:%d",
-                session_id, detection.score,
+                "이상 판정: session=%d score=%.4f dir=%s %s:%d→%s:%d",
+                session_id, detection.score, observation.direction,
                 key.src_ip, key.src_port, key.dst_ip, key.dst_port,
             )
-        return detection
+        return observation
 
     def run(self):
         try:

@@ -55,6 +55,38 @@ class Detection:
     score: float = 0.0
 
 
+# 마지막 패킷의 방향 — Algorithm 1의 요청/응답 분기 기준
+REQUEST = "REQUEST"
+RESPONSE = "RESPONSE"
+
+
+@dataclass(frozen=True)
+class SessionObservation:
+    """판정과 그 판정이 난 세션의 관측 메타를 함께 묶는다.
+
+    Detection은 모델의 출력(판정·점수)이고, 나머지는 탐지 경로가 프레임에서 관측한
+    사실(마지막 패킷 방향, 5-tuple)이다. 텔레메트리가 이 메타를 그대로 실어 보낸다.
+
+    is_malicious/score를 프로퍼티로 위임해, Detection을 기대하던 집행 경로가 수정 없이
+    이 객체를 그대로 쓸 수 있게 한다.
+    """
+
+    detection: Detection
+    direction: Optional[str] = None       # REQUEST | RESPONSE | None
+    src_ip: Optional[str] = None
+    src_port: Optional[int] = None
+    dst_ip: Optional[str] = None
+    dst_port: Optional[int] = None
+
+    @property
+    def is_malicious(self):
+        return self.detection.is_malicious
+
+    @property
+    def score(self):
+        return self.detection.score
+
+
 @runtime_checkable
 class TrafficConverter(Protocol):
     """패킷 벡터를 세션별로 버퍼링하다 윈도우 w가 차면 이미지를 낸다."""
