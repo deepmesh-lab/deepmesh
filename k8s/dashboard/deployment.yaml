@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-frontend
+  namespace: deepmesh
+spec:
+  # 정적 파일만 서빙하므로 1개로도 충분하지만, 2개면 롤아웃 중에도 화면이 끊기지 않는다.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: dashboard-frontend
+  template:
+    metadata:
+      labels:
+        app: dashboard-frontend
+      annotations:
+        # ConfigMap만 바꾸면 파드가 자동으로 재시작되지 않는다.
+        # 값을 고친 뒤에는 kubectl rollout restart로 직접 갈아끼워야 한다.
+        checksum/nginx-conf: "manual"
+    spec:
+      containers:
+        - name: nginx
+          image: uicheolshin/dashboard-frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 80
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+              readOnly: true
+          # /healthz는 nginx가 직접 답한다. 백엔드가 죽어도 화면은 살아 있어야 하므로
+          # 프로브가 백엔드 상태에 끌려가면 안 된다.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: dashboard-frontend-nginx

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-frontend
+  namespace: deepmesh
+spec:
+  # NodePort는 ClusterIP도 함께 갖는다. 클러스터 안에서는 dashboard-frontend로,
+  # 밖에서는 http://<노드IP>:30090 으로 붙는다.
+  #
+  # 기존 ingress.yaml에는 얹지 않는다. 거기 걸린 rewrite-target: / 가 모든 경로를
+  # /로 바꿔 버려서 정적 자산 경로가 전부 깨진다.
+  type: NodePort
+  selector:
+    app: dashboard-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      # 30000~32767 범위. MSA 프론트가 30080을 쓰고 있어 겹치지 않게 잡았다.
+      nodePort: 30090
