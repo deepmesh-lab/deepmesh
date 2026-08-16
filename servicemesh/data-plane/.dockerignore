@@ -1,0 +1,6 @@
+# 빌드 컨텍스트는 data-plane/ 이다. 패턴은 이 디렉터리 기준.
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+proxy/tests/
+proxy/README.md
