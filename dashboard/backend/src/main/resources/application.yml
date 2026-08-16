@@ -1,0 +1,34 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: dashboard-backend
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/dashboard_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&createDatabaseIfNotExist=true}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      pool-name: dashboard-pool
+      maximum-pool-size: 10
+      minimum-idle: 5
+  jpa:
+    hibernate:
+      # 수집 스키마가 아직 확정 전이라 개발 단계에서는 update. 안정화되면 validate + schema.sql.
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+  jackson:
+    # occurredAt 등을 ISO-8601 오프셋 문자열로 직렬화 (타임스탬프 숫자 금지)
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: Asia/Seoul
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
