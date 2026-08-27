@@ -37,6 +37,12 @@ public class Fabric8ClusterTopologySource implements ClusterTopologySource {
 
 	private final KubernetesClient client;
 
+	/**
+	 * Control Plane의 호스트(예: 192.168.56.10). configmap의 CONTROL_PLANE_URL과 같은
+	 * 곳을 가리켜야 사이드카가 그리로 보낸 트래픽이 control-plane 노드로 되돌아온다.
+	 */
+	private final String controlPlaneHost;
+
 	@Override
 	public List<ServiceWorkload> workloads(String namespace) {
 		return guard(() -> {
@@ -63,7 +69,11 @@ public class Fabric8ClusterTopologySource implements ClusterTopologySource {
 	@Override
 	public List<PodDetail> pods(String namespace, String serviceName) {
 		return guard(() -> {
-			List<Pod> pods = podsByApp(namespace).get(serviceName);
+			// 호출부는 노드 id(짧은 이름)를 준다. 워크로드 이름은 접미사가 붙어 있을 수
+			// 있으므로 정규화한 키로 찾는다.
+			Map<String, List<Pod>> byApp = new HashMap<>();
+			podsByApp(namespace).forEach((app, pods) -> byApp.put(NodeIds.of(app), pods));
+			List<Pod> pods = byApp.get(NodeIds.of(serviceName));
 			if (pods == null) {
 				return null;   // 서비스 자체가 없다 -> 호출부가 404로 바꾼다
 			}
@@ -85,7 +95,8 @@ public class Fabric8ClusterTopologySource implements ClusterTopologySource {
 	@Override
 	public String activeReplicaSetName(String namespace, String serviceName) {
 		return guard(() -> client.apps().replicaSets().inNamespace(namespace).list().getItems().stream()
-				.filter(rs -> rs.getMetadata().getName().startsWith(serviceName + "-"))
+				.filter(rs -> NodeIds.of(rs.getMetadata().getName()).startsWith(NodeIds.of(serviceName) + "-")
+						|| rs.getMetadata().getName().startsWith(serviceName + "-"))
 				// 롤링 업데이트 중이면 여럿이다. 실제로 Pod를 갖고 있는 최신 것을 고른다.
 				.filter(rs -> rs.getSpec() != null && nullSafe(rs.getSpec().getReplicas()) > 0)
 				.map(rs -> rs.getMetadata().getName())
@@ -101,16 +112,17 @@ public class Fabric8ClusterTopologySource implements ClusterTopologySource {
 			String apiServerIp = null;
 
 			for (Map.Entry<String, List<Pod>> entry : podsByApp(namespace).entrySet()) {
+				String nodeId = NodeIds.of(entry.getKey());
 				boolean proxied = entry.getValue().stream()
 						.anyMatch(Fabric8ClusterTopologySource::hasSidecar);
 				// 사이드카가 없으면 DATASTORE로 접는다. 명세의 kind 열거에 "감시 대상이
 				// 아닌 클러스터 내 워크로드"를 따로 두지 않았고, 화면 동작을 가르는 것은
 				// kind가 아니라 proxyEnabled=false -> counts null -> UNMONITORED다.
-				kinds.put(entry.getKey(), proxied ? NodeKind.SERVICE : NodeKind.DATASTORE);
+				kinds.put(nodeId, proxied ? NodeKind.SERVICE : NodeKind.DATASTORE);
 				for (Pod pod : entry.getValue()) {
 					String ip = pod.getStatus() == null ? null : pod.getStatus().getPodIP();
 					if (ip != null) {
-						ipToService.put(ip, entry.getKey());
+						ipToService.put(ip, nodeId);
 					}
 				}
 			}
@@ -131,7 +143,7 @@ public class Fabric8ClusterTopologySource implements ClusterTopologySource {
 			if (kubernetes != null && kubernetes.getSpec() != null) {
 				apiServerIp = kubernetes.getSpec().getClusterIP();
 			}
-			return new PeerIndex(ipToService, kinds, apiServerIp);
+			return new PeerIndex(ipToService, kinds, apiServerIp, controlPlaneHost);
 		});
 	}
 
@@ -140,7 +152,9 @@ public class Fabric8ClusterTopologySource implements ClusterTopologySource {
 			Integer replicas, Integer readyReplicas) {
 		List<Pod> pods = podsByApp.getOrDefault(name, List.of());
 		boolean proxied = pods.stream().anyMatch(Fabric8ClusterTopologySource::hasSidecar);
-		return new ServiceWorkload(name, namespace, proxied ? NodeKind.SERVICE : NodeKind.DATASTORE,
+		// 노드 id는 워크로드 이름이 아니라 짧은 이름이다 (NodeIds 참고).
+		return new ServiceWorkload(NodeIds.of(name), namespace,
+				proxied ? NodeKind.SERVICE : NodeKind.DATASTORE,
 				nullSafe(replicas), nullSafe(readyReplicas), proxied);
 	}
 
@@ -190,10 +204,10 @@ public class Fabric8ClusterTopologySource implements ClusterTopologySource {
 		if (service.getSpec() != null && service.getSpec().getSelector() != null) {
 			String app = service.getSpec().getSelector().get("app");
 			if (app != null) {
-				return app;
+				return NodeIds.of(app);
 			}
 		}
-		return service.getMetadata().getName();
+		return NodeIds.of(service.getMetadata().getName());
 	}
 
 	private static int nullSafe(Integer value) {

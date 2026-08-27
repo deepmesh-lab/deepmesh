@@ -90,8 +90,8 @@ class TopologyApiTest {
 
 		mockMvc.perform(get("/dashboard/topology"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.nodes[0].id").value("auth-service"))
-				.andExpect(jsonPath("$.nodes[0].status").value("HEALTHY"))
+				.andExpect(jsonPath("$.nodes[?(@.id=='auth')].id").value("auth"))
+				.andExpect(jsonPath("$.nodes[?(@.id=='auth')].status").value("HEALTHY"))
 				.andExpect(jsonPath("$.edges").isEmpty());
 	}
 
@@ -101,9 +101,9 @@ class TopologyApiTest {
 		cluster.workload("mysql", 1, 1, false);
 
 		mockMvc.perform(get("/dashboard/topology"))
-				.andExpect(jsonPath("$.nodes[0].proxyEnabled").value(false))
-				.andExpect(jsonPath("$.nodes[0].counts").doesNotExist())
-				.andExpect(jsonPath("$.nodes[0].status").value("UNMONITORED"));
+				.andExpect(jsonPath("$.nodes[?(@.id=='mysql')].proxyEnabled").value(false))
+				.andExpect(jsonPath("$.nodes[?(@.id=='mysql')].counts").value(contains(nullValue())))
+				.andExpect(jsonPath("$.nodes[?(@.id=='mysql')].status").value("UNMONITORED"));
 	}
 
 	@Test
@@ -111,7 +111,7 @@ class TopologyApiTest {
 		cluster.workload("mysql", 3, 1, false);
 
 		mockMvc.perform(get("/dashboard/topology"))
-				.andExpect(jsonPath("$.nodes[0].status").value("UNMONITORED"));
+				.andExpect(jsonPath("$.nodes[?(@.id=='mysql')].status").value("UNMONITORED"));
 	}
 
 	@Test
@@ -120,7 +120,7 @@ class TopologyApiTest {
 		ingest(batch("post-service", "10.96.0.1", 0, "drop", "DROP"));
 
 		mockMvc.perform(get("/dashboard/topology"))
-				.andExpect(jsonPath("$.nodes[0].status").value("COMPROMISED"));
+				.andExpect(jsonPath("$.nodes[?(@.id=='post')].status").value("COMPROMISED"));
 	}
 
 	@Test
@@ -128,7 +128,7 @@ class TopologyApiTest {
 		cluster.workload("post-service", 3, 1, true);
 
 		mockMvc.perform(get("/dashboard/topology"))
-				.andExpect(jsonPath("$.nodes[0].status").value("DEGRADED"));
+				.andExpect(jsonPath("$.nodes[?(@.id=='post')].status").value("DEGRADED"));
 	}
 
 	@Test
@@ -140,7 +140,7 @@ class TopologyApiTest {
 
 		mockMvc.perform(get("/dashboard/topology"))
 				.andExpect(jsonPath("$.edges.length()").value(1))
-				.andExpect(jsonPath("$.edges[0].id").value("post-service->mysql"))
+				.andExpect(jsonPath("$.edges[0].id").value("post->mysql"))
 				.andExpect(jsonPath("$.edges[0].counts.benign").value(128))
 				.andExpect(jsonPath("$.edges[0].total").value(128))
 				.andExpect(jsonPath("$.edges[0].lastVerdict").value("FORWARD"));
@@ -152,7 +152,7 @@ class TopologyApiTest {
 		ingest(batch("post-service", "10.96.0.1", 0, "drop", "DROP"));
 
 		mockMvc.perform(get("/dashboard/topology"))
-				.andExpect(jsonPath("$.edges[0].id").value("post-service->kubernetes"))
+				.andExpect(jsonPath("$.edges[0].id").value("post->kubernetes"))
 				.andExpect(jsonPath("$.edges[0].counts.drop").value(1))
 				.andExpect(jsonPath("$.edges[0].lastVerdict").value("DROP"));
 	}
@@ -172,6 +172,27 @@ class TopologyApiTest {
 	}
 
 	@Test
+	void Control_Plane은_합성_노드로_항상_나온다() throws Exception {
+		// master 노드의 호스트 프로세스라 K8s 워크로드로 잡히지 않는다. 백엔드가
+		// 합성해 주지 않으면 프론트의 고정 격자에서 그 자리가 빈다.
+		cluster.workload("auth-service", 1, 1, true);
+
+		mockMvc.perform(get("/dashboard/topology"))
+				.andExpect(jsonPath("$.nodes[?(@.id=='control-plane')].kind").value("CONTROL_PLANE"))
+				.andExpect(jsonPath("$.nodes[?(@.id=='control-plane')].proxyEnabled").value(false));
+	}
+
+	@Test
+	void 노드_id는_워크로드_접미사를_뗀_짧은_이름이다() throws Exception {
+		// 프론트의 고정 격자(layout.ts GRID)가 짧은 이름을 키로 쓴다.
+		cluster.workload("comment-service", 2, 2, true);
+
+		mockMvc.perform(get("/dashboard/topology"))
+				.andExpect(jsonPath("$.nodes[?(@.id=='comment')].serviceName").value("comment"))
+				.andExpect(jsonPath("$.nodes[?(@.id=='comment-service')]").isEmpty());
+	}
+
+	@Test
 	void 서비스가_없으면_404다() throws Exception {
 		mockMvc.perform(get("/dashboard/topology/services/nope"))
 				.andExpect(status().isNotFound())
@@ -185,9 +206,9 @@ class TopologyApiTest {
 		cluster.pod("post-service", "post-service-b", "10.244.2.7", true, true);
 		ingest(batch("post-service", "10.96.0.1", 0, "drop", "DROP"));
 
-		mockMvc.perform(get("/dashboard/topology/services/post-service"))
+		mockMvc.perform(get("/dashboard/topology/services/post"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.replicaSetName").value("post-service-abc123"))
+				.andExpect(jsonPath("$.replicaSetName").value("post-abc123"))
 				.andExpect(jsonPath("$.pods.length()").value(2))
 				// 이벤트를 보낸 Pod만 COMPROMISED, 형제는 HEALTHY
 				.andExpect(jsonPath("$.pods[?(@.podName=='post-service-a')].status").value("COMPROMISED"))
@@ -200,7 +221,7 @@ class TopologyApiTest {
 		cluster.workload("post-service", 1, 1, true);
 		cluster.pod("post-service", "post-service-a", "10.244.1.5", true, false);
 
-		mockMvc.perform(get("/dashboard/topology/services/post-service"))
+		mockMvc.perform(get("/dashboard/topology/services/post"))
 				.andExpect(jsonPath("$.pods[0].status").value("UNMONITORED"));
 	}
 }

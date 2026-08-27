@@ -16,5 +16,14 @@ public enum NodeKind {
 	/** Kubernetes API Server. 시나리오 1의 Drop 대상. */
 	K8S_API,
 	/** 클러스터 외부. K8s 리소스가 아닌 합성 노드. */
-	EXTERNAL
+	EXTERNAL,
+	/**
+	 * Control Plane (Request Verifier + Pod Info Provider).
+	 *
+	 * <p>명세 1-2의 enum에 없는 값이다. Control Plane은 master 노드의 호스트 프로세스라
+	 * K8s 워크로드로 잡히지 않는데, 프론트는 이걸 별도 상자로 그리도록 만들어져 있다
+	 * (topology/layout.ts의 CONTROL_PLANE_PARTS). 백엔드가 합성해 주지 않으면 그 자리가
+	 * 빈다.
+	 */
+	CONTROL_PLANE
 }

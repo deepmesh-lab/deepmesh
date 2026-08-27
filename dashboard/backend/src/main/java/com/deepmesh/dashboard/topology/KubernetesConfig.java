@@ -2,6 +2,7 @@ package com.deepmesh.dashboard.topology;
 
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
+import org.springframework.beans.factory.annotation.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -33,9 +34,12 @@ public class KubernetesConfig {
 
 	@Bean
 	@ConditionalOnProperty(name = "deepmesh.kubernetes.enabled", havingValue = "true", matchIfMissing = true)
-	public ClusterTopologySource clusterTopologySource(KubernetesClient client) {
-		log.info("K8s 연동 활성 — master={}", client.getMasterUrl());
-		return new Fabric8ClusterTopologySource(client);
+	public ClusterTopologySource clusterTopologySource(
+			KubernetesClient client,
+			@Value("${deepmesh.control-plane.host:}") String controlPlaneHost) {
+		log.info("K8s 연동 활성 — master={}, control-plane={}",
+				client.getMasterUrl(), controlPlaneHost.isBlank() ? "(미지정)" : controlPlaneHost);
+		return new Fabric8ClusterTopologySource(client, controlPlaneHost);
 	}
 
 	@Bean

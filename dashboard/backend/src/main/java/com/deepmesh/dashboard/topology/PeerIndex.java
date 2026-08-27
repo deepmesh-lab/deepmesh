@@ -19,14 +19,19 @@ public record PeerIndex(
 		/** 서비스명 -> 노드 종류. */
 		Map<String, NodeKind> serviceKinds,
 		/** K8s API Server의 ClusterIP. 보통 kubernetes 서비스의 것. */
-		String apiServerIp) {
+		String apiServerIp,
+		/**
+		 * Control Plane의 호스트 주소. master 노드의 호스트 프로세스라 K8s 리소스로
+		 * 잡히지 않아, 이 값으로만 노드로 되돌릴 수 있다.
+		 */
+		String controlPlaneIp) {
 
 	/** 알 수 없는 목적지를 접어 넣는 합성 노드 (backend-frontend-api.md의 EXTERNAL). */
 	public static final String EXTERNAL_NODE = "external";
 	public static final String K8S_API_NODE = "kubernetes";
 
 	public static PeerIndex empty() {
-		return new PeerIndex(Map.of(), Map.of(), null);
+		return new PeerIndex(Map.of(), Map.of(), null, null);
 	}
 
 	/**
@@ -44,6 +49,9 @@ public record PeerIndex(
 		if (service != null) {
 			return service;
 		}
+		if (dstIp.equals(controlPlaneIp)) {
+			return NodeIds.CONTROL_PLANE;
+		}
 		if (dstIp.equals(apiServerIp) || isApiServerPort(dstPort)) {
 			return K8S_API_NODE;
 		}
@@ -56,6 +64,9 @@ public record PeerIndex(
 		}
 		if (EXTERNAL_NODE.equals(nodeId)) {
 			return NodeKind.EXTERNAL;
+		}
+		if (NodeIds.CONTROL_PLANE.equals(nodeId)) {
+			return NodeKind.CONTROL_PLANE;
 		}
 		return serviceKinds.getOrDefault(nodeId, NodeKind.EXTERNAL);
 	}

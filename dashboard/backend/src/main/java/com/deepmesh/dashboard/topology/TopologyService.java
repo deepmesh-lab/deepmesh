@@ -72,6 +72,11 @@ public class TopologyService {
 			known.add(workload.serviceName());
 			nodes.add(toNode(workload, byService.get(workload.serviceName())));
 		}
+		// Control Plane은 master 노드의 호스트 프로세스라 K8s 워크로드로 잡히지 않는다.
+		// 합성해 주지 않으면 프론트의 고정 격자에서 그 자리가 빈다.
+		if (known.add(NodeIds.CONTROL_PLANE)) {
+			nodes.add(syntheticNode(NodeIds.CONTROL_PLANE, ns, NodeKind.CONTROL_PLANE));
+		}
 		// 엣지가 가리키는데 워크로드로는 안 잡히는 목적지(K8s API, external, 다른 NS)를
 		// 합성 노드로 채운다. 없으면 프론트에서 끊긴 엣지가 된다.
 		for (EdgeResponse edge : edges) {
@@ -169,14 +174,14 @@ public class TopologyService {
 			String target = PeerBenignBucket.OTHER_DST_IP.equals(bucket.getDstIp())
 					? PeerIndex.EXTERNAL_NODE
 					: peers.resolve(bucket.getDstIp(), null);
-			accumulator(byId, bucket.getServiceName(), target).addBenign(bucket.getBenign());
+			accumulator(byId, NodeIds.of(bucket.getServiceName()), target).addBenign(bucket.getBenign());
 		}
 
 		// cleared/drop/relay — 이벤트가 dstIp를 갖고 온다
 		for (DetectionEvent event : eventRepository
 				.findByOccurredAtGreaterThanEqualAndOccurredAtLessThan(range.from(), range.to())) {
 			String target = peers.resolve(event.getDstIp(), event.getDstPort());
-			accumulator(byId, event.getServiceName(), target).addEvent(event);
+			accumulator(byId, NodeIds.of(event.getServiceName()), target).addEvent(event);
 		}
 
 		List<EdgeAccumulator> sorted = new ArrayList<>(byId.values());
@@ -262,7 +267,7 @@ public class TopologyService {
 		Map<String, VerdictCounts> out = new HashMap<>();
 		for (StatsBucket bucket : statsRepository
 				.findByWindowToGreaterThanEqualAndWindowToLessThan(range.from(), range.to())) {
-			out.merge(bucket.getServiceName(), toCounts(bucket), VerdictCounts::plus);
+			out.merge(NodeIds.of(bucket.getServiceName()), toCounts(bucket), VerdictCounts::plus);
 		}
 		return out;
 	}
@@ -271,7 +276,7 @@ public class TopologyService {
 		Map<String, VerdictCounts> out = new HashMap<>();
 		for (StatsBucket bucket : statsRepository
 				.findByWindowToGreaterThanEqualAndWindowToLessThan(range.from(), range.to())) {
-			if (serviceName.equals(bucket.getServiceName()) && bucket.getPodName() != null) {
+			if (serviceName.equals(NodeIds.of(bucket.getServiceName())) && bucket.getPodName() != null) {
 				out.merge(bucket.getPodName(), toCounts(bucket), VerdictCounts::plus);
 			}
 		}
@@ -283,7 +288,7 @@ public class TopologyService {
 		Map<String, String> out = new HashMap<>();
 		for (DetectionEvent event : eventRepository
 				.findByOccurredAtGreaterThanEqualAndOccurredAtLessThan(range.from(), range.to())) {
-			if (serviceName.equals(event.getServiceName()) && event.getModelId() != null) {
+			if (serviceName.equals(NodeIds.of(event.getServiceName())) && event.getModelId() != null) {
 				out.putIfAbsent(event.getPodName(), event.getModelId());
 			}
 		}

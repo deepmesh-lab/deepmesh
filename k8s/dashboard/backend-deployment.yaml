@@ -36,6 +36,11 @@ spec:
                 secretKeyRef:
                   name: deepmesh-secret
                   key: MYSQL_ROOT_PASSWORD
+            # Control Plane은 master 노드의 호스트 프로세스라 K8s 리소스로 잡히지 않는다.
+            # 이 주소로만 토폴로지의 control-plane 노드로 되돌릴 수 있다. configmap의
+            # CONTROL_PLANE_URL과 같은 곳을 가리켜야 한다.
+            - name: DEEPMESH_CONTROLPLANE_HOST
+              value: "192.168.56.10"
           readinessProbe:
             httpGet:
               path: /dashboard/health

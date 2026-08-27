@@ -14,6 +14,7 @@ public class FakeClusterTopologySource implements ClusterTopologySource {
 	private final Map<String, String> ipToService = new HashMap<>();
 	private final Map<String, NodeKind> kinds = new HashMap<>();
 	private String apiServerIp = "10.96.0.1";
+	private String controlPlaneIp = "192.168.56.10";
 
 	public void reset() {
 		workloads.clear();
@@ -22,24 +23,29 @@ public class FakeClusterTopologySource implements ClusterTopologySource {
 		kinds.clear();
 	}
 
+	/**
+	 * 워크로드 이름을 받아 노드 id로 정규화해 담는다 — 실제 구현이 하는 일과 같다.
+	 * 대역이 이걸 빠뜨리면 테스트만 통과하고 클러스터에서는 노드 id가 어긋난다.
+	 */
 	public FakeClusterTopologySource workload(String name, int replicas, int ready, boolean proxied) {
-		workloads.add(new ServiceWorkload(name, "default",
+		String id = NodeIds.of(name);
+		workloads.add(new ServiceWorkload(id, "default",
 				proxied ? NodeKind.SERVICE : NodeKind.DATASTORE, replicas, ready, proxied));
-		kinds.put(name, proxied ? NodeKind.SERVICE : NodeKind.DATASTORE);
+		kinds.put(id, proxied ? NodeKind.SERVICE : NodeKind.DATASTORE);
 		return this;
 	}
 
 	public FakeClusterTopologySource pod(String service, String podName, String podIp,
 			boolean ready, boolean proxyReady) {
-		pods.computeIfAbsent(service, k -> new ArrayList<>()).add(new PodDetail(
+		pods.computeIfAbsent(NodeIds.of(service), k -> new ArrayList<>()).add(new PodDetail(
 				podName, podIp, "worker-1", "Running", ready,
 				OffsetDateTime.parse("2026-08-08T13:00:00+09:00"), proxyReady));
-		ipToService.put(podIp, service);
+		ipToService.put(podIp, NodeIds.of(service));
 		return this;
 	}
 
 	public FakeClusterTopologySource serviceIp(String ip, String service) {
-		ipToService.put(ip, service);
+		ipToService.put(ip, NodeIds.of(service));
 		return this;
 	}
 
@@ -50,16 +56,16 @@ public class FakeClusterTopologySource implements ClusterTopologySource {
 
 	@Override
 	public List<PodDetail> pods(String namespace, String serviceName) {
-		return pods.get(serviceName);
+		return pods.get(NodeIds.of(serviceName));
 	}
 
 	@Override
 	public String activeReplicaSetName(String namespace, String serviceName) {
-		return serviceName + "-abc123";
+		return NodeIds.of(serviceName) + "-abc123";
 	}
 
 	@Override
 	public PeerIndex peerIndex(String namespace) {
-		return new PeerIndex(Map.copyOf(ipToService), Map.copyOf(kinds), apiServerIp);
+		return new PeerIndex(Map.copyOf(ipToService), Map.copyOf(kinds), apiServerIp, controlPlaneIp);
 	}
 }
