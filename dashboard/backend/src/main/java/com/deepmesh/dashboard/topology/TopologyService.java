@@ -21,7 +21,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,7 +36,6 @@ import org.springframework.transaction.annotation.Transactional;
  * cleared/drop/relay는 detection_event에서 온다.
  */
 @Service
-@RequiredArgsConstructor
 public class TopologyService {
 
 	/**
@@ -48,17 +47,38 @@ public class TopologyService {
 	 */
 	static final int MAX_EDGES = 50;
 
+	/**
+	 * namespace 파라미터가 없을 때 볼 곳. 명세는 default를 기본값으로 적었지만 이 클러스터의
+	 * 워크로드는 deepmesh에 있다 — default를 보면 아무것도 없거나 RBAC에 막힌다.
+	 */
+	private final String defaultNamespace;
+
 	private final ClusterTopologySource cluster;
 	private final DetectionEventRepository eventRepository;
 	private final StatsBucketRepository statsRepository;
 	private final PeerBenignBucketRepository peerRepository;
 	private final Clock clock;
 
+	public TopologyService(
+			@Value("${deepmesh.namespace:deepmesh}") String defaultNamespace,
+			ClusterTopologySource cluster,
+			DetectionEventRepository eventRepository,
+			StatsBucketRepository statsRepository,
+			PeerBenignBucketRepository peerRepository,
+			Clock clock) {
+		this.defaultNamespace = defaultNamespace;
+		this.cluster = cluster;
+		this.eventRepository = eventRepository;
+		this.statsRepository = statsRepository;
+		this.peerRepository = peerRepository;
+		this.clock = clock;
+	}
+
 	@Transactional(readOnly = true)
 	public TopologyResponse topology(String timeRange, String namespace) {
 		OffsetDateTime now = now();
 		TimeRange range = TimeRange.of(timeRange, now);
-		String ns = namespace == null ? "default" : namespace;
+		String ns = namespace == null ? defaultNamespace : namespace;
 
 		List<ServiceWorkload> workloads = cluster.workloads(ns);
 		PeerIndex peers = cluster.peerIndex(ns);
@@ -91,7 +111,7 @@ public class TopologyService {
 	public ServiceDetailResponse serviceDetail(String serviceName, String timeRange, String namespace) {
 		OffsetDateTime now = now();
 		TimeRange range = TimeRange.of(timeRange, now);
-		String ns = namespace == null ? "default" : namespace;
+		String ns = namespace == null ? defaultNamespace : namespace;
 
 		List<PodDetail> pods = cluster.pods(ns, serviceName);
 		if (pods == null) {

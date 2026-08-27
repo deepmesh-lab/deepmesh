@@ -28,4 +28,5 @@ EXPOSE 8080
 
 # K8s 안에서는 ServiceAccount 토큰으로 K8s API에 붙는다(토폴로지). 밖에서 띄우려면
 # deepmesh.kubernetes.enabled=false로 두면 토폴로지만 503이 되고 나머지는 동작한다.
-ENTRYPOINT ["java", "-jar", "/app.jar"]
+# WORKDIR가 /app이라 jar는 /app/app.jar에 있다. 절대경로 /app.jar은 존재하지 않는다.
+ENTRYPOINT ["java", "-jar", "app.jar"]
