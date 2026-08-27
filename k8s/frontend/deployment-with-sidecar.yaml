@@ -17,6 +17,8 @@ spec:
         # 사이드카와 같은 이미지를 쓰되 root로 실행한다 (iptables 규칙 주입).
         - name: iptables-init
           image: kimgooner/reverse-proxy:v2
+          # 태그를 재사용하므로 기본값(IfNotPresent)이면 노드가 캐시된 옛 이미지를 쓴다.
+          imagePullPolicy: Always
           command: ["sh", "/app/iptables.sh"]
           env:
             # 백엔드 3종과 달리 메인 컨테이너가 nginx라 80이다.
@@ -63,6 +65,8 @@ spec:
         # (SIDECAR_CONTAINER=reverse-proxy)
         - name: reverse-proxy
           image: kimgooner/reverse-proxy:v2
+          # 태그를 재사용하므로 기본값(IfNotPresent)이면 노드가 캐시된 옛 이미지를 쓴다.
+          imagePullPolicy: Always
           ports:
             - containerPort: 9011
           securityContext:
