@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.deepmesh.dashboard.event.DetectionEvent;
 import com.deepmesh.dashboard.event.DetectionEventRepository;
 import com.deepmesh.dashboard.ingest.dto.IngestRequest;
+import com.deepmesh.dashboard.stream.DetectionBroadcaster;
 import com.deepmesh.dashboard.stats.StatsBucket;
 import com.deepmesh.dashboard.stats.StatsBucketRepository;
 import com.deepmesh.dashboard.topology.PeerBenignBucket;
@@ -31,6 +32,7 @@ public class IngestService {
 	private final DetectionEventRepository eventRepository;
 	private final StatsBucketRepository statsRepository;
 	private final PeerBenignBucketRepository peerRepository;
+	private final DetectionBroadcaster broadcaster;
 	private final ObjectMapper objectMapper;
 
 	@Transactional
@@ -48,6 +50,9 @@ public class IngestService {
 				saved.add(toEntity(proxy, event));
 			}
 			eventRepository.saveAll(saved);
+			// 저장이 끝난 뒤에 넘긴다. eventId가 채번되기 전에 흘리면 SSE의 id와
+			// 재전송 커서가 어긋난다.
+			broadcaster.enqueue(saved);
 		}
 		return saved.size();
 	}
