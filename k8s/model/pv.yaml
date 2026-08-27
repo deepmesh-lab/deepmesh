@@ -1,0 +1,45 @@
+# 탐지 모델 저장소 — dev-server(192.168.56.1)의 NFS export.
+#
+# 서비스별 PVC를 쓰지 않는 이유: 클러스터의 유일한 StorageClass인 local-path는
+# PV를 특정 노드의 로컬 디스크로 만들고 nodeAffinity를 박는다. replicas가 2인데
+# 두 Pod이 다른 노드에 뜨면 두 번째는 "volume node affinity conflict"로 Pending에
+# 걸린다. 실제로 네 서비스 모두 replica가 노드에 흩어져 있었다.
+#
+# ReadWriteMany로 4개 서비스 모델을 한 볼륨에 두면 노드 제약이 사라지고, 모델을
+# 교체할 때 dev-server의 디렉터리 한 곳만 덮어쓰면 된다.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: deepmesh-model-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  # 이 PV를 지워도 export 디렉터리의 모델 파일은 남는다.
+  persistentVolumeReclaimPolicy: Retain
+  # 동적 프로비저닝 대상이 아니다. 빈 문자열이라야 default StorageClass(local-path)가
+  # 끼어들지 않는다.
+  storageClassName: ""
+  mountOptions:
+    - ro
+    - hard
+    - nfsvers=4.2
+  nfs:
+    server: 192.168.56.1
+    path: /srv/deepmesh/model
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: deepmesh-model-pvc
+  namespace: deepmesh
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ""
+  # 위 PV로 고정한다. 이름을 지정하지 않으면 조건이 맞는 다른 PV에 붙을 수 있다.
+  volumeName: deepmesh-model-pv
+  resources:
+    requests:
+      storage: 1Gi
