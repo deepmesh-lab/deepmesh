@@ -60,6 +60,22 @@ CONVERTER_FACTORY = os.environ.get("CONVERTER_FACTORY", "")
 DETECTOR_FACTORY = os.environ.get("DETECTOR_FACTORY", "")
 DETECTION_ENGINE_FACTORY = os.environ.get("DETECTION_ENGINE_FACTORY", "")
 
+# --- 탐지 모델 --------------------------------------------------------------
+# 위 팩토리가 traffic_handler.detection_binding을 가리킬 때만 읽힌다.
+#
+# 가중치 루트. <root>/<svc>/<svc>_model/ 구조를 기대한다(detection/README.md 참고).
+# 가중치는 저장소에 없고 PVC를 여기에 마운트한다.
+MODEL_ROOT = os.environ.get("MODEL_ROOT", "/app/model")
+# 모델 디렉터리 이름. k8s는 SERVICE_NAME을 "auth-service"로 주는데 모델 쪽 이름은
+# "auth"라 접미사를 뗀다. 이 규칙이 안 맞는 서비스가 생기면 값을 직접 준다.
+DETECTION_SERVICE = os.environ.get("DETECTION_SERVICE", "") or SERVICE_NAME.removesuffix("-service")
+# vendoring한 탐지 모듈 코드의 위치. 비워두면 detection_binding이 후보 경로에서 찾는다 —
+# 리포지토리(data-plane/detection)와 이미지(/app/detection)의 깊이가 달라 하나로
+# 고정할 수 없다.
+DETECTION_CODE_ROOT = os.environ.get("DETECTION_CODE_ROOT", "")
+# 윈도우 버퍼를 들고 있을 세션 수 상한. 세션 id 모듈로 값(max_sessions)과는 다른 수다.
+DETECTION_WINDOW_CAP = _int("DETECTION_WINDOW_CAP", 4096)
+
 # --- Relay ------------------------------------------------------------------
 RELAY_TIMEOUT = _float("RELAY_TIMEOUT", 3.0)
 # 형제 Pod 재요청은 멱등 메서드에만 허용한다. POST를 재실행하면 리소스가 중복 생성된다.
