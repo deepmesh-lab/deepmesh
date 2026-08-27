@@ -17,10 +17,10 @@ import json
 import logging
 import socket
 import struct
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from . import http_message, signature as sig
-from .ports import SessionKey
+from .ports import SessionKey, SessionObservation
 from .relay import RELAY_MARKER
 from .telemetry import build_event
 
@@ -84,6 +84,20 @@ def original_dst(sock):
         return (sockname[0], sockname[1]) if sockname else None
 
 
+def _with_endpoint(observation, pod_ip, endpoint, src_port):
+    """관측에 실제 상대 주소를 입힌다.
+
+    집행 경로는 SessionObservation 대신 Detection만 받을 수도 있다(ports.py) — 탐지가
+    5-tuple을 동반하기 전에 만들어진 판정이 그렇다. 그 경우에도 상대 주소만은 실어 보낸다.
+    """
+    if isinstance(observation, SessionObservation):
+        return replace(observation, src_ip=pod_ip,
+                       src_port=observation.src_port or src_port,
+                       dst_ip=endpoint[0], dst_port=endpoint[1])
+    return SessionObservation(detection=observation, src_ip=pod_ip, src_port=src_port,
+                              dst_ip=endpoint[0], dst_port=endpoint[1])
+
+
 class TrafficHandler:
     def __init__(self, config, verdicts, peers, control_plane, relay_client,
                  resolve_dst=None, telemetry=None):
@@ -96,10 +110,23 @@ class TrafficHandler:
         # 원목적지 해석기. 테스트에서는 NAT이 없으므로 대역을 주입한다.
         self.resolve_dst = resolve_dst or original_dst
 
-    def _emit(self, observation, verdict, category, stage, passed, signature):
-        """집행 결과를 텔레메트리로 보낸다. telemetry가 없으면 무시."""
+    def _emit(self, observation, verdict, category, stage, passed, signature,
+              endpoint=None, src_port=None):
+        """집행 결과를 텔레메트리로 보낸다. telemetry가 없으면 무시.
+
+        관측의 5-tuple을 집행 경로가 아는 값으로 바로잡는다. 탐지는 lo에서 프레임을 잡기
+        때문에 관측된 주소가 메인 컨테이너↔프록시 루프백 구간(127.0.0.1 양쪽)이다. 그대로
+        보내면 백엔드가 목적지를 서비스로 역매핑하지 못해, 토폴로지 엣지가 전부 external로
+        뭉치고 이벤트의 peerServiceName이 비어 화면에 "알 수 없음"으로 뜬다.
+
+        TELEMETRY_API.md가 규정하는 값은 이것이다 — srcIp는 관측 주체(내 Pod), dstIp는
+        상대. 상대가 누구인지는 집행 경로만 안다: outbound는 SO_ORIGINAL_DST로 얻은 원
+        목적지이고, 응답은 요청을 보내온 외부 클라이언트다.
+        """
         if self.telemetry is None:
             return
+        if endpoint is not None:
+            observation = _with_endpoint(observation, self.config.pod_ip, endpoint, src_port)
         self.telemetry.emit(
             build_event(observation, verdict, category, stage, passed, signature)
         )
@@ -162,10 +189,12 @@ class TrafficHandler:
             target = first_request.target if is_http else "{}:{}".format(*dst)
             if not await self.control_plane.verify(signature):
                 self._log(DROP, kind, method, target, detection)
-                self._emit(detection, VERDICT_DROP, CAT_DROP, STAGE_REQUEST, False, signature)
+                self._emit(detection, VERDICT_DROP, CAT_DROP, STAGE_REQUEST, False, signature,
+                           endpoint=dst, src_port=peer[1])
                 return  # Algorithm 1 line 19-20: Drop 후 종료
             self._log(FORWARD, kind + "(검증 통과)", method, target, detection)
-            self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_REQUEST, True, signature)
+            self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_REQUEST, True, signature,
+                       endpoint=dst, src_port=peer[1])
 
         upstream_ip = LOCALHOST if dst[0] == self.config.pod_ip else dst[0]
         try:
@@ -225,10 +254,10 @@ class TrafficHandler:
                     self._log(DROP, "outbound request", request.method, request.target,
                               detection)
                     self._emit(detection, VERDICT_DROP, CAT_DROP, STAGE_REQUEST, False,
-                               signature)
+                               signature, endpoint=dst, src_port=peer[1])
                     return
                 self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_REQUEST, True,
-                           signature)
+                           signature, endpoint=dst, src_port=peer[1])
 
     # -- 3번: inbound 연결의 응답 (Relay 경로) -------------------------------
 
@@ -273,7 +302,7 @@ class TrafficHandler:
                     break
 
                 response, action = await self._apply_response_policy(
-                    request, response, sessions, dst)
+                    request, response, sessions, dst, peer)
                 client_writer.write(response.to_bytes())
                 await client_writer.drain()
 
@@ -284,7 +313,7 @@ class TrafficHandler:
         finally:
             _close(up_writer)
 
-    async def _apply_response_policy(self, request, response, sessions, dst):
+    async def _apply_response_policy(self, request, response, sessions, dst, peer):
         """Algorithm 1 line 10~15. 이상 응답을 형제 Pod의 참조 응답으로 교체한다."""
         detection = self.verdicts.get_any(sessions)
         if detection is None or not detection.is_malicious:
@@ -320,11 +349,12 @@ class TrafficHandler:
             self._log(FORWARD, "outbound response(내용 일치)", request.method,
                       request.target, detection)
             self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_RESPONSE, True,
-                       signature)
+                       signature, endpoint=peer, src_port=self.config.target_port)
             return response, FORWARD
 
         self._log(RELAY, "outbound response", request.method, request.target, detection)
-        self._emit(detection, VERDICT_RELAY, CAT_RELAY, STAGE_RESPONSE, False, signature)
+        self._emit(detection, VERDICT_RELAY, CAT_RELAY, STAGE_RESPONSE, False, signature,
+                   endpoint=peer, src_port=self.config.target_port)
         return reference, RELAY
 
     # -- 1번: 관리 엔드포인트 ------------------------------------------------

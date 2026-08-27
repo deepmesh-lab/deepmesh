@@ -86,6 +86,19 @@ class FakeBackend:
             writer.close()
 
 
+class RecordingTelemetry:
+    """발신된 이벤트를 모아두는 대역. 실제 전송은 하지 않는다."""
+
+    def __init__(self):
+        self.events = []
+
+    def emit(self, event):
+        self.events.append(event)
+
+    def incr(self, category, peer=None):
+        pass
+
+
 class Harness:
     """핸들러 + 백엔드 + 형제 Pod를 loopback에 띄운다."""
 
@@ -117,9 +130,10 @@ class Harness:
             else frozenset({POD_IP}),
         )
         relay = RelayClient(self.peers, self.sibling.port, timeout=3.0, max_body_bytes=1 << 20)
+        self.telemetry = RecordingTelemetry()
         self.handler = TrafficHandler(
             config, self.verdicts, self.peers, self.control_plane, relay,
-            resolve_dst=lambda sock: self.dst,
+            resolve_dst=lambda sock: self.dst, telemetry=self.telemetry,
         )
         self._server = await asyncio.start_server(self.handler.handle, "127.0.0.1", 0)
         self.port = self._server.sockets[0].getsockname()[1]
@@ -371,3 +385,53 @@ def test_알_수_없는_관리_경로는_404():
             await harness.stop()
 
     assert b"404" in run(scenario())
+
+
+# --- 텔레메트리의 5-tuple 귀속 ----------------------------------------------
+#
+# 탐지는 lo에서 프레임을 잡아 관측 주소가 메인 컨테이너↔프록시 루프백 구간이다. 그대로
+# 내보내면 백엔드가 목적지를 서비스로 역매핑하지 못해 토폴로지 엣지가 전부 external로
+# 뭉치고, 이벤트의 peerServiceName이 비어 화면에 "알 수 없음"으로 뜬다. 집행 경로가 아는
+# 실제 상대로 바로잡는지 본다 (TELEMETRY_API.md).
+
+def test_outbound_이벤트의_상대는_원_목적지다():
+    async def scenario():
+        # SO_ORIGINAL_DST가 돌려줄 원 목적지를 클러스터 IP로 둔다. 실제로 연결되지는
+        # 않지만 이벤트는 연결 시도 전에 발신되므로 검증에 지장이 없다.
+        h = Harness(allow=True, treat_client_as_local=True, always_malicious=True)
+        await h.start()
+        h.dst = ("10.244.2.77", 8080)
+        try:
+            await h.request(GET_POST)
+        finally:
+            await h.stop()
+        return h.telemetry.events
+
+    events = run(scenario())
+    assert events, "이상 판정 outbound 요청은 이벤트를 남겨야 한다"
+    event = events[-1]
+    assert event["srcIp"] == POD_IP           # 관측 주체는 내 Pod
+    assert event["dstIp"] == "10.244.2.77"    # 127.0.0.1이 아니라 실제 목적지
+    assert event["dstPort"] == 8080
+    assert event["direction"] is None or event["direction"] in ("REQUEST", "RESPONSE")
+
+
+def test_응답_이벤트의_상대는_요청을_보낸_클라이언트다():
+    async def scenario():
+        # 응답 경로(Relay). 상대는 목적지가 아니라 요청을 보내온 외부 클라이언트다.
+        h = Harness(backend_body=b'{"content":"tampered"}',
+                    sibling_body=b'{"content":"normal"}', always_malicious=True)
+        await h.start()
+        h.peers.update([{"name": "post-b", "ip": "127.0.0.1"}])
+        try:
+            await h.request(GET_POST)
+        finally:
+            await h.stop()
+        return h.telemetry.events
+
+    events = run(scenario())
+    assert events, "Relay는 이벤트를 남겨야 한다"
+    event = events[-1]
+    assert event["srcIp"] == POD_IP
+    assert event["dstIp"] == "127.0.0.1"      # 테스트에서 클라이언트는 loopback이다
+    assert event["verdict"] == "RELAY"
