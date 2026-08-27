@@ -35,6 +35,9 @@ import lombok.NoArgsConstructor;
 @Builder
 public class PeerBenignBucket {
 
+	/** 프록시가 슬롯 상한을 넘겨 접은 몫에 붙이는 dstIp (telemetry.OTHER_PEER와 같은 값). */
+	public static final String OTHER_DST_IP = "other";
+
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
@@ -43,7 +46,7 @@ public class PeerBenignBucket {
 	private String serviceName;
 	private String podName;
 
-	/** 목적지 IP. 프록시 슬롯 상한에 걸려 접힌 몫은 "other"로 온다. */
+	/** 목적지 IP. 프록시 슬롯 상한에 걸려 접힌 몫은 OTHER_DST_IP로 온다. */
 	private String dstIp;
 
 	private OffsetDateTime windowFrom;
