@@ -31,7 +31,7 @@ spec:
 
       containers:
         - name: auth-service
-          image: uicheolshin/auth-service:latest
+          image: kimgooner/auth-service:v2
           ports:
             - containerPort: 8080
           env:

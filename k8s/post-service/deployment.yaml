@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: post-service
-          image: uicheolshin/post-service:latest
+          image: kimgooner/post-service:v4
           ports:
             - containerPort: 8080
           env:

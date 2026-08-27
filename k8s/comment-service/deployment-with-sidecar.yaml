@@ -31,7 +31,7 @@ spec:
 
       containers:
         - name: comment-service
-          image: uicheolshin/comment-service:latest
+          image: kimgooner/comment-service:v4
           ports:
             - containerPort: 8080
           env:

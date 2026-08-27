@@ -32,7 +32,7 @@ spec:
 
       containers:
         - name: frontend
-          image: uicheolshin/frontend:latest
+          image: kimgooner/frontend:v3
           ports:
             - containerPort: 80
           env:
