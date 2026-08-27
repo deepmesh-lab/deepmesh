@@ -11,8 +11,9 @@ import lombok.Setter;
 /**
  * 프록시 → 백엔드 수집 페이로드 (TELEMETRY_API.md).
  *
- * <p>한 배치는 발신 프록시 정보(proxy), 구간 집계(windowStats), 개별 이벤트(events)로
- * 이루어진다. events는 비어 있을 수 있다(정상 트래픽만 흐른 구간).
+ * <p>한 배치는 발신 프록시 정보(proxy), 구간 집계(windowStats), 목적지별 benign 집계
+ * (peerStats), 개별 이벤트(events)로 이루어진다. events는 비어 있을 수 있다(정상
+ * 트래픽만 흐른 구간).
  */
 @Getter
 @Setter
@@ -24,6 +25,15 @@ public class IngestRequest {
 
 	@Valid
 	private WindowStats windowStats;
+
+	@Valid
+	private List<PeerStat> peerStats;
+
+	/**
+	 * 창에서 관측한 서로 다른 목적지 수. peerStats가 슬롯 상한에 걸려 other로 접힌
+	 * 것까지 센다 — 접히고 나면 "목적지가 많다"는 사실이 peerStats만 봐서는 안 보인다.
+	 */
+	private int peerCount;
 
 	@Valid
 	private List<Event> events;
@@ -48,6 +58,15 @@ public class IngestRequest {
 		private long cleared;
 		private long drop;
 		private long relay;
+	}
+
+	/** 목적지별 benign 집계 한 줄. benign 외의 분류는 events가 나른다. */
+	@Getter
+	@Setter
+	public static class PeerStat {
+		@NotNull
+		private String dstIp;
+		private long benign;
 	}
 
 	@Getter

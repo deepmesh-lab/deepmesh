@@ -8,6 +8,8 @@ import com.deepmesh.dashboard.event.DetectionEventRepository;
 import com.deepmesh.dashboard.ingest.dto.IngestRequest;
 import com.deepmesh.dashboard.stats.StatsBucket;
 import com.deepmesh.dashboard.stats.StatsBucketRepository;
+import com.deepmesh.dashboard.topology.PeerBenignBucket;
+import com.deepmesh.dashboard.topology.PeerBenignBucketRepository;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +30,7 @@ public class IngestService {
 
 	private final DetectionEventRepository eventRepository;
 	private final StatsBucketRepository statsRepository;
+	private final PeerBenignBucketRepository peerRepository;
 	private final ObjectMapper objectMapper;
 
 	@Transactional
@@ -36,6 +39,7 @@ public class IngestService {
 
 		if (request.getWindowStats() != null) {
 			statsRepository.save(toBucket(proxy, request.getWindowStats()));
+			savePeerStats(proxy, request);
 		}
 
 		List<DetectionEvent> saved = new ArrayList<>();
@@ -46,6 +50,30 @@ public class IngestService {
 			eventRepository.saveAll(saved);
 		}
 		return saved.size();
+	}
+
+	/**
+	 * 목적지별 benign을 저장한다. 창 구간은 windowStats의 것을 그대로 쓴다 — 같은 flush가
+	 * 만든 두 집계라 구간이 어긋나면 안 된다.
+	 */
+	private void savePeerStats(IngestRequest.Proxy proxy, IngestRequest request) {
+		if (request.getPeerStats() == null || request.getPeerStats().isEmpty()) {
+			return;
+		}
+		IngestRequest.WindowStats window = request.getWindowStats();
+		List<PeerBenignBucket> buckets = new ArrayList<>();
+		for (IngestRequest.PeerStat peer : request.getPeerStats()) {
+			buckets.add(PeerBenignBucket.builder()
+					.serviceName(proxy.getServiceName())
+					.podName(proxy.getPodName())
+					.dstIp(peer.getDstIp())
+					.windowFrom(window.getFrom())
+					.windowTo(window.getTo())
+					.benign(peer.getBenign())
+					.peerCount(request.getPeerCount())
+					.build());
+		}
+		peerRepository.saveAll(buckets);
 	}
 
 	private StatsBucket toBucket(IngestRequest.Proxy proxy, IngestRequest.WindowStats stats) {
