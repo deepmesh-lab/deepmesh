@@ -1,11 +1,13 @@
 # 빌드 단계 — 소스에서 bootJar를 만든다.
-FROM eclipse-temurin:17-jdk AS build
+FROM eclipse-temurin:17-jdk-alpine AS build
 WORKDIR /src
 
 # 의존성 레이어를 먼저 굳힌다. src만 바뀐 재빌드에서 이 레이어가 캐시된다.
 COPY gradle gradle
 COPY gradlew settings.gradle build.gradle gradle.properties ./
-RUN ./gradlew --no-daemon dependencies > /dev/null 2>&1 || true
+# 저장소의 gradlew에 실행 비트를 넣어뒀지만, 그것이 없는 체크아웃에서도 빌드되게 한다
+# (msa 서비스 Dockerfile들과 같은 처리).
+RUN chmod +x gradlew && ./gradlew --no-daemon dependencies > /dev/null 2>&1 || true
 
 COPY src src
 # 테스트는 CI에서 돈다. 이미지 빌드가 H2·컨텍스트 기동까지 떠안을 이유가 없다.
