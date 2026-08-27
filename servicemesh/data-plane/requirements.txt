@@ -1,1 +1,11 @@
 aiohttp==3.10.11
+
+# ── 탐지 런타임 (../detection/) ─────────────────────────────────────────────
+# CPU 전용 휠을 쓴다. 사이드카에 GPU가 없고, 기본 PyPI의 torch는 CUDA 런타임까지 끌고
+# 와 이미지가 수 GB 불어난다. 인덱스는 Dockerfile의 pip 호출이 지정한다.
+torch==2.8.0+cpu
+numpy==2.0.2
+joblib==1.5.3
+# ocsvm.pkl이 이 버전으로 저장돼 있다. 다른 버전으로 열면 InconsistentVersionWarning이
+# 뜨고(detector.py가 억제한다) 판정이 달라질 수 있으므로 고정한다.
+scikit-learn==1.6.1
