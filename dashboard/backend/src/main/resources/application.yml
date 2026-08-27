@@ -32,3 +32,10 @@ management:
     web:
       exposure:
         include: health, info
+  endpoint:
+    health:
+      # liveness/readiness 그룹을 명시적으로 켠다. Spring Boot가 K8s를 감지하면 자동으로
+      # 켜지지만, 감지에 실패하면 매니페스트의 livenessProbe가 404를 받아 컨테이너가
+      # 무한 재시작한다.
+      probes:
+        enabled: true

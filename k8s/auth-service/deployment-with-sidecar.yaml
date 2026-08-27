@@ -95,8 +95,36 @@ spec:
                 configMapKeyRef:
                   name: deepmesh-config
                   key: CONTROL_PLANE_URL
+            # 판정 배치를 보낼 곳. 비어 있으면 텔레메트리가 통째로 비활성이라
+            # 대시보드에 데이터가 하나도 오지 않는다.
+            - name: DASHBOARD_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: deepmesh-config
+                  key: DASHBOARD_URL
+            # 탐지 모듈 결합. 이 둘이 없으면 build_adapter가 NullDetectionAdapter를
+            # 골라 Forward 전용으로 동작한다 (proxy/README.md).
+            - name: CONVERTER_FACTORY
+              value: traffic_handler.detection_binding:build_converter
+            - name: DETECTOR_FACTORY
+              value: traffic_handler.detection_binding:build_detector
+            - name: MODEL_ROOT
+              value: /app/model
+            # 모델 디렉터리 이름. SERVICE_NAME에서 "-service"를 뗀 값이 기본이지만,
+            # 어긋나면 기동 시 FileNotFoundError로 드러나므로 명시해 둔다.
+            - name: DETECTION_SERVICE
+              value: auth
+          volumeMounts:
+            - name: model
+              mountPath: /app/model
+              readOnly: true
           readinessProbe:
             tcpSocket:
               port: 9011
             initialDelaySeconds: 3
             periodSeconds: 5
+
+      volumes:
+        - name: model
+          persistentVolumeClaim:
+            claimName: deepmesh-model-pvc
