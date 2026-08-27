@@ -183,6 +183,19 @@ class TopologyApiTest {
 	}
 
 	@Test
+	void kubernetes와_external도_트래픽_없이_항상_나온다() throws Exception {
+		// 명세가 "공격 시점에 처음 생성된다"고 한 것은 엣지다. 노드가 미리 있어야
+		// 평소 없던 선이 그어지는 대비가 보인다.
+		cluster.workload("auth-service", 1, 1, true);
+
+		mockMvc.perform(get("/dashboard/topology"))
+				.andExpect(jsonPath("$.nodes[?(@.id=='kubernetes')].kind").value("K8S_API"))
+				.andExpect(jsonPath("$.nodes[?(@.id=='external')].kind").value("EXTERNAL"))
+				.andExpect(jsonPath("$.nodes[?(@.id=='kubernetes')].status").value("UNMONITORED"))
+				.andExpect(jsonPath("$.edges").isEmpty());
+	}
+
+	@Test
 	void 노드_id는_워크로드_접미사를_뗀_짧은_이름이다() throws Exception {
 		// 프론트의 고정 격자(layout.ts GRID)가 짧은 이름을 키로 쓴다.
 		cluster.workload("comment-service", 2, 2, true);

@@ -47,6 +47,10 @@ public class TopologyService {
 	 */
 	static final int MAX_EDGES = 50;
 
+	/** 트래픽 유무와 무관하게 항상 내보내는 합성 노드. */
+	private static final List<String> SYNTHETIC_NODES = List.of(
+			NodeIds.CONTROL_PLANE, PeerIndex.K8S_API_NODE, PeerIndex.EXTERNAL_NODE);
+
 	/**
 	 * namespace 파라미터가 없을 때 볼 곳. 명세는 default를 기본값으로 적었지만 이 클러스터의
 	 * 워크로드는 deepmesh에 있다 — default를 보면 아무것도 없거나 RBAC에 막힌다.
@@ -105,10 +109,18 @@ public class TopologyService {
 			known.add(workload.serviceName());
 			nodes.add(toNode(workload, byService.get(workload.serviceName())));
 		}
-		// Control Plane은 master 노드의 호스트 프로세스라 K8s 워크로드로 잡히지 않는다.
-		// 합성해 주지 않으면 프론트의 고정 격자에서 그 자리가 빈다.
-		if (known.add(NodeIds.CONTROL_PLANE)) {
-			nodes.add(syntheticNode(NodeIds.CONTROL_PLANE, ns, NodeKind.CONTROL_PLANE));
+		// K8s 워크로드로 잡히지 않는 노드들을 합성한다. 트래픽이 없어도 항상 넣는다 —
+		// 명세가 "공격 시점에 처음 생성된다"고 한 것은 엣지이지 노드가 아니다. 노드가
+		// 미리 있어야 평소 없던 선이 그어지는 대비가 보이고, 프론트의 고정 격자
+		// (topology/layout.ts GRID)도 이 셋의 자리를 예약해 두고 있다.
+		//
+		//   control-plane  master 노드의 호스트 프로세스
+		//   kubernetes     API Server. 시나리오 1의 Drop 대상
+		//   external       클러스터 밖. 합성 노드
+		for (String id : SYNTHETIC_NODES) {
+			if (known.add(id)) {
+				nodes.add(syntheticNode(id, ns, peers.kindOf(id)));
+			}
 		}
 		// 엣지가 가리키는데 워크로드로는 안 잡히는 목적지(K8s API, external, 다른 NS)를
 		// 합성 노드로 채운다. 없으면 프론트에서 끊긴 엣지가 된다.
