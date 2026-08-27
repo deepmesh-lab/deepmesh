@@ -53,6 +53,14 @@ public class TopologyService {
 	 */
 	private final String defaultNamespace;
 
+	/**
+	 * 토폴로지에서 뺄 워크로드.
+	 *
+	 * <p>대시보드 자신은 관측 대상 메시의 일부가 아니다. 사이드카가 없어 항상
+	 * UNMONITORED로 뜨고, 프론트의 고정 격자에도 자리가 없어 화면 아래에 쌓인다.
+	 */
+	private final Set<String> excludedNodes;
+
 	private final ClusterTopologySource cluster;
 	private final DetectionEventRepository eventRepository;
 	private final StatsBucketRepository statsRepository;
@@ -61,12 +69,14 @@ public class TopologyService {
 
 	public TopologyService(
 			@Value("${deepmesh.namespace:deepmesh}") String defaultNamespace,
+			@Value("${deepmesh.topology.exclude:dashboard-backend,dashboard-frontend}") String[] excluded,
 			ClusterTopologySource cluster,
 			DetectionEventRepository eventRepository,
 			StatsBucketRepository statsRepository,
 			PeerBenignBucketRepository peerRepository,
 			Clock clock) {
 		this.defaultNamespace = defaultNamespace;
+		this.excludedNodes = Set.of(excluded);
 		this.cluster = cluster;
 		this.eventRepository = eventRepository;
 		this.statsRepository = statsRepository;
@@ -89,6 +99,9 @@ public class TopologyService {
 		List<NodeResponse> nodes = new ArrayList<>();
 		Set<String> known = new HashSet<>();
 		for (ServiceWorkload workload : workloads) {
+			if (excludedNodes.contains(workload.serviceName())) {
+				continue;
+			}
 			known.add(workload.serviceName());
 			nodes.add(toNode(workload, byService.get(workload.serviceName())));
 		}
