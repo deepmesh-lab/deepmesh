@@ -493,3 +493,63 @@ def test_판정_대기가_0이면_즉시_전달한다():
 
     data, _ = run(scenario())
     assert b"normal" in data   # 판정 없음 → Forward
+
+
+# --- 비HTTP 원바이트 중계 (TLS·MySQL) ---------------------------------------
+#
+# 프록시는 HTTP만 파싱하고 비HTTP는 그대로 흘려보낸다. peek로 앞부분을 본 뒤 그 버퍼를
+# 중복해서 밀어넣으면 TLS ClientHello가 두 번 나가 핸드셰이크가 깨진다 — :443 K8s API와
+# :3306 MySQL 연결이 그래서 실패했다. 받은 그대로, 중복 없이 목적지에 닿아야 한다.
+
+class RawEchoServer:
+    """받은 바이트를 그대로 돌려보낸다. 비HTTP 스트림 무결성 확인용."""
+
+    def __init__(self):
+        self._server = None
+        self.port = None
+        self.received = bytearray()
+
+    async def start(self):
+        async def handle(reader, writer):
+            while True:
+                chunk = await reader.read(4096)
+                if not chunk:
+                    break
+                self.received.extend(chunk)
+                writer.write(chunk)
+                await writer.drain()
+            writer.close()
+        self._server = await asyncio.start_server(handle, "127.0.0.1", 0)
+        self.port = self._server.sockets[0].getsockname()[1]
+
+    async def stop(self):
+        self._server.close()
+        await self._server.wait_closed()
+
+
+def test_비HTTP_바이트는_중복없이_그대로_중계된다():
+    async def scenario():
+        echo = RawEchoServer()
+        await echo.start()
+        h = Harness(treat_client_as_local=True)
+        h.dst = ("127.0.0.1", echo.port)      # 원목적지 = raw echo 서버
+        await h.start()
+        h.dst = ("127.0.0.1", echo.port)
+        try:
+            # TLS ClientHello를 흉내낸 비HTTP 바이트. 0x16 0x03 = handshake, TLS 1.x
+            payload = b"\x16\x03\x01\x00\x2f" + b"CLIENTHELLO-" + b"A" * 40
+            reader, writer = await asyncio.open_connection("127.0.0.1", h.port)
+            writer.write(payload)
+            await writer.drain()
+            echoed = await asyncio.wait_for(reader.read(len(payload)), timeout=5.0)
+            writer.close()
+            await asyncio.sleep(0.05)
+            return payload, echoed, bytes(echo.received)
+        finally:
+            await echo.stop()
+            await h.stop()
+
+    payload, echoed, received = run(scenario())
+    # 목적지가 받은 바이트가 보낸 것과 정확히 같아야 한다(중복이면 길이가 2배가 된다).
+    assert received == payload, "비HTTP 바이트가 원본과 달라졌다(중복 전송 의심)"
+    assert echoed == payload    # 왕복도 무결

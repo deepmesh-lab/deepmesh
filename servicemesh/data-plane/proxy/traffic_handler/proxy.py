@@ -249,11 +249,12 @@ class TrafficHandler:
             _close(up_writer)
 
     async def _pipe_raw(self, reader, client_writer, up_reader, up_writer):
-        """비HTTP TCP(MySQL 등)는 파싱하지 않고 그대로 중계한다."""
-        pending = reader.buffered
-        if pending:
-            up_writer.write(pending)
-            await up_writer.drain()
+        """비HTTP TCP(TLS·MySQL 등)는 파싱하지 않고 그대로 중계한다.
+
+        peek로 버퍼에 남은 앞부분을 따로 밀어넣지 않는다. read_some이 버퍼를 먼저
+        소비하므로, 여기서 buffered를 또 쓰면 같은 바이트가 두 번 나가 TLS ClientHello가
+        중복돼 핸드셰이크가 깨진다(:443 K8s API·:3306 MySQL 연결 실패의 원인이었다).
+        """
         await asyncio.gather(
             _pipe(reader, up_writer),
             _pipe(up_reader, client_writer),
