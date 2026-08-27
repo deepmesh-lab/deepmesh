@@ -89,7 +89,7 @@ public class IngestService {
 				.windowTo(stats.getTo())
 				.benign(stats.getBenign())
 				.cleared(stats.getCleared())
-				.drop(stats.getDrop())
+				.dropCount(stats.getDrop())
 				.relay(stats.getRelay())
 				.build();
 	}

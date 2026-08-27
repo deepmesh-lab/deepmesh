@@ -43,7 +43,7 @@ public class StatsService {
 
 		long benign = buckets.stream().mapToLong(StatsBucket::getBenign).sum();
 		long cleared = buckets.stream().mapToLong(StatsBucket::getCleared).sum();
-		long drop = buckets.stream().mapToLong(StatsBucket::getDrop).sum();
+		long drop = buckets.stream().mapToLong(StatsBucket::getDropCount).sum();
 		long relay = buckets.stream().mapToLong(StatsBucket::getRelay).sum();
 		long total = benign + cleared + drop + relay;
 
@@ -67,7 +67,7 @@ public class StatsService {
 		byService.forEach((service, list) -> {
 			long benign = list.stream().mapToLong(StatsBucket::getBenign).sum();
 			long cleared = list.stream().mapToLong(StatsBucket::getCleared).sum();
-			long drop = list.stream().mapToLong(StatsBucket::getDrop).sum();
+			long drop = list.stream().mapToLong(StatsBucket::getDropCount).sum();
 			long relay = list.stream().mapToLong(StatsBucket::getRelay).sum();
 			long total = benign + cleared + drop + relay;
 			rows.add(new ByServiceResponse.Row(service, total, benign, cleared, drop, relay,
@@ -118,7 +118,7 @@ public class StatsService {
 			if (a != null) {
 				a[0] += b.getBenign();
 				a[1] += b.getCleared();
-				a[2] += b.getDrop();
+				a[2] += b.getDropCount();
 				a[3] += b.getRelay();
 			}
 		}

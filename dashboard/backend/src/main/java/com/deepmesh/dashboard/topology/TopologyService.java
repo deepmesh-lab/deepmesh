@@ -317,7 +317,7 @@ public class TopologyService {
 
 	private static VerdictCounts toCounts(StatsBucket bucket) {
 		return new VerdictCounts(bucket.getBenign(), bucket.getCleared(),
-				bucket.getDrop(), bucket.getRelay());
+				bucket.getDropCount(), bucket.getRelay());
 	}
 
 	private OffsetDateTime now() {

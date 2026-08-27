@@ -1,6 +1,5 @@
 package com.deepmesh.dashboard.stats;
 
-import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -43,10 +42,14 @@ public class StatsBucket {
 	private long benign;
 	private long cleared;
 	/**
-	 * MySQL 예약어라 컬럼 이름을 따옴표로 감싼다. H2는 그냥 통과시켜서 테스트에서는
-	 * 드러나지 않고, MySQL에서만 create table이 문법 오류로 실패한다.
+	 * 판정이 drop인 시퀀스 수.
+	 *
+	 * <p>필드명을 drop으로 두지 않는다. 그러면 컬럼이 MySQL 예약어가 되어 create table이
+	 * 문법 오류로 실패한다. @Column으로 따옴표를 씌우는 방법은 Spring Boot의 네이밍
+	 * 전략을 거치며 인용이 벗겨져 통하지 않았다. 이름을 바꾸는 쪽이 확실하다.
+	 *
+	 * <p>H2는 drop을 컬럼 이름으로 허용해서 테스트로는 드러나지 않는다.
 	 */
-	@Column(name = "`drop`")
-	private long drop;
+	private long dropCount;
 	private long relay;
 }
