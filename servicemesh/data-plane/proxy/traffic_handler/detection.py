@@ -64,7 +64,9 @@ class DetectionPipeline:
         # benign 시퀀스는 개별 이벤트가 없으므로 집계 카운터만 올린다.
         # cleared/drop/relay는 집행 경로에서 emit되며 그때 집계된다.
         if self._telemetry is not None and not detection.is_malicious:
-            self._telemetry.incr("benign")
+            # 목적지를 함께 넘긴다. benign은 개별 이벤트로 남지 않으므로, 이걸 빼면
+            # 대시보드가 평시 통신 경로(엣지)를 그릴 근거가 사라진다.
+            self._telemetry.incr("benign", peer=observation.dst_ip)
         if detection.is_malicious:
             logger.warning(
                 "이상 판정: session=%d score=%.4f dir=%s %s:%d→%s:%d",

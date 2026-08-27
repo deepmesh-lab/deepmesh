@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import asyncio
 
+from traffic_handler import telemetry
 from traffic_handler.ports import Detection, SessionObservation
 from traffic_handler.telemetry import (
     TelemetryClient, build_event, session_label,
@@ -107,3 +108,92 @@ def test_큐가_상한을_넘으면_오래된_것부터_버린다():
     assert len(c._events) == 3
     # 가장 오래된 sig-0, sig-1이 밀려나고 최신 3개가 남는다
     assert c._events[0]["signature"] == "sig-2"
+
+
+# ── 목적지별 benign 집계 (peerStats) ────────────────────────────────────────
+
+def _flush_payload(client):
+    """_flush를 한 번 돌리고 전송된 페이로드를 돌려준다."""
+    sent = {}
+
+    class FakeResp:
+        status = 200
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+
+    class FakeSession:
+        def post(self, url, json, timeout):
+            sent["payload"] = json
+            return FakeResp()
+
+    client._session = FakeSession()
+    asyncio.run(client._flush())
+    return sent["payload"]
+
+
+def _client():
+    return TelemetryClient("http://backend", {"serviceName": "post"})
+
+
+def test_benign은_목적지별로_나뉜다():
+    """평시 엣지를 그릴 근거. cleared/drop/relay는 events가 dstIp를 나르지만
+    benign은 개별 이벤트가 없어 여기서만 목적지를 알 수 있다."""
+    client = _client()
+    for _ in range(3):
+        client.incr("benign", peer="10.0.0.9")
+    client.incr("benign", peer="10.0.0.7")
+
+    payload = _flush_payload(client)
+    assert payload["peerStats"] == [
+        {"dstIp": "10.0.0.7", "benign": 1},
+        {"dstIp": "10.0.0.9", "benign": 3},
+    ]
+    assert payload["windowStats"]["benign"] == 4   # 합이 windowStats와 같다
+
+
+def test_benign이_아닌_분류는_목적지를_세지_않는다():
+    """events가 이미 dstIp와 함께 나른다. 두 번 세면 같은 사실이 두 경로로 갈라진다."""
+    client = _client()
+    client.incr("drop", peer="10.0.0.9")
+    assert _flush_payload(client)["peerStats"] == []
+
+
+def test_peer가_없으면_목적지_집계를_건너뛴다():
+    client = _client()
+    client.incr("benign")
+    payload = _flush_payload(client)
+    assert payload["peerStats"] == []
+    assert payload["windowStats"]["benign"] == 1
+
+
+def test_목적지가_상한을_넘으면_other로_접힌다():
+    """모델이 스캔을 놓쳐 benign으로 흘릴 때의 안전망."""
+    client = _client()
+    for i in range(telemetry.MAX_PEERS + 10):
+        client.incr("benign", peer="10.0.{}.{}".format(i // 256, i % 256))
+
+    payload = _flush_payload(client)
+    peers = {p["dstIp"]: p["benign"] for p in payload["peerStats"]}
+    assert len(peers) == telemetry.MAX_PEERS + 1        # 상한 + other 한 칸
+    assert peers[telemetry.OTHER_PEER] == 10
+    # 접혀도 유실되지 않는다 — 합은 windowStats와 같다
+    assert sum(peers.values()) == payload["windowStats"]["benign"]
+
+
+def test_peerCount는_접힌_목적지까지_센다():
+    """상한에 걸려 other로 합쳐져도 '목적지가 몇 개였나'는 남아야 한다.
+    평시 10에서 갑자기 커지는 것 자체가 스캔 신호다."""
+    client = _client()
+    for i in range(telemetry.MAX_PEERS + 10):
+        client.incr("benign", peer="10.0.{}.{}".format(i // 256, i % 256))
+    assert _flush_payload(client)["peerCount"] == telemetry.MAX_PEERS + 10
+
+
+def test_창이_끝나면_목적지_집계가_비워진다():
+    client = _client()
+    client.incr("benign", peer="10.0.0.9")
+    _flush_payload(client)
+    client.incr("benign", peer="10.0.0.7")
+    payload = _flush_payload(client)
+    assert payload["peerStats"] == [{"dstIp": "10.0.0.7", "benign": 1}]
+    assert payload["peerCount"] == 1
