@@ -8,6 +8,7 @@
 """
 
 import asyncio
+import time
 import importlib
 import logging
 
@@ -17,6 +18,7 @@ from traffic_handler.adapter import (
 )
 from traffic_handler.control_plane import ControlPlaneClient
 from traffic_handler.detection import DetectionPipeline
+from traffic_handler.original_dst import OriginalDstRegistry
 from traffic_handler.packet_source import AfPacketSource
 from traffic_handler.peers import PeerRegistry
 from traffic_handler.proxy import HandlerConfig, TrafficHandler
@@ -55,6 +57,9 @@ async def main():
     )
 
     verdicts = VerdictStore(ttl=config.VERDICT_TTL)
+    # 집행 경로가 원래 목적지를 등록하고 탐지 경로가 읽는다. TTL은 판정 유효기간과 같은
+    # 척도로 두면 충분하다(연결 하나의 수명보다 길기만 하면 된다).
+    original_dst_registry = OriginalDstRegistry(ttl=config.VERDICT_TTL, clock=time.monotonic)
     peers = PeerRegistry()
     control_plane = ControlPlaneClient(
         config.CONTROL_PLANE_URL, config.POD_IP, config.VERIFY_TIMEOUT, config.VERIFY_FAIL_OPEN
@@ -92,12 +97,14 @@ async def main():
         relay_safe_methods=config.RELAY_SAFE_METHODS,
     )
     handler = TrafficHandler(
-        handler_config, verdicts, peers, control_plane, relay_client, telemetry=telemetry
+        handler_config, verdicts, peers, control_plane, relay_client,
+        telemetry=telemetry, original_dst_registry=original_dst_registry,
     )
 
     pipeline = DetectionPipeline(
         AfPacketSource(config.SNIFF_IFACE), adapter, verdicts,
-        config.TARGET_PORT, config.PROXY_PORT, telemetry=telemetry,
+        config.TARGET_PORT, config.PROXY_PORT,
+        telemetry=telemetry, original_dst=original_dst_registry,
     )
     # 캡처를 시작하지 못하면(NET_RAW capability 없음 등) 탐지 스레드가 로그를 남기고
     # 종료한다. 프록시는 Forward 전용으로 계속 동작한다.

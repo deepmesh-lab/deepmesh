@@ -19,22 +19,42 @@ ParseMeta·GetSessionID가 Traffic Handler의 몫이고, 그 뒤는 전부 종�
 """
 
 import logging
+import struct
 import threading
 
 from .ports import SessionObservation
+from .ports import SessionKey
 from .session import is_from_main_container, last_packet_direction, parse_session
 
 logger = logging.getLogger("traffic-handler.detection")
 
 
+def _rewrite_dst(frame, dst_ip, dst_port):
+    """프레임의 IP dst와 TCP dport를 바꾼 새 프레임을 만든다.
+
+    체크섬은 고치지 않는다 — 컨버터의 frame_info는 오프셋만 읽고 체크섬을 검증하지
+    않으므로 필요 없다. 오프셋 규약은 session.parse_session과 같다.
+    """
+    buf = bytearray(frame)
+    ihl = (buf[14] & 0x0F) * 4
+    tcp = 14 + ihl
+    buf[14 + 16:14 + 20] = bytes(int(x) for x in dst_ip.split("."))
+    buf[tcp + 2:tcp + 4] = struct.pack("!H", dst_port)
+    return bytes(buf)
+
+
 class DetectionPipeline:
-    def __init__(self, source, adapter, verdicts, target_port, proxy_port, telemetry=None):
+    def __init__(self, source, adapter, verdicts, target_port, proxy_port,
+                 telemetry=None, original_dst=None):
         self._source = source
         self._adapter = adapter
         self._verdicts = verdicts
         self._target_port = target_port
         self._proxy_port = proxy_port
         self._telemetry = telemetry
+        # 집행 경로가 등록한 원래 목적지. iptables REDIRECT로 프레임의 목적지가 DNAT되어
+        # 있어(dst=127.0.0.1:9011), 이걸로 원본을 되찾는다 (original_dst.py 참고).
+        self._original_dst = original_dst
         self._max_sessions = adapter.max_sessions
         self._stop = threading.Event()
         self._thread = None
@@ -46,6 +66,14 @@ class DetectionPipeline:
             return None
         if not is_from_main_container(key, self._target_port, self._proxy_port):
             return None
+
+        # outbound(메인→프록시)면 DNAT된 목적지를 원래 목적지로 되돌린다. 컨버터의 포트
+        # 라우팅과 세션 id, 관측 dst가 모두 원본을 기준으로 서야 집행 경로와 맞물린다.
+        if self._original_dst is not None and key.dst_port == self._proxy_port:
+            original = self._original_dst.resolve(key.src_ip, key.src_port)
+            if original is not None:
+                key = SessionKey(key.src_ip, original[0], key.src_port, original[1])
+                frame = _rewrite_dst(frame, original[0], original[1])
 
         session_id = key.session_id(self._max_sessions)
         detection = self._adapter.analyze(session_id, frame)

@@ -104,7 +104,7 @@ def _with_endpoint(observation, pod_ip, endpoint, src_port):
 
 class TrafficHandler:
     def __init__(self, config, verdicts, peers, control_plane, relay_client,
-                 resolve_dst=None, telemetry=None):
+                 resolve_dst=None, telemetry=None, original_dst_registry=None):
         self.config = config
         self.verdicts = verdicts
         self.peers = peers
@@ -113,6 +113,9 @@ class TrafficHandler:
         self.telemetry = telemetry
         # 원목적지 해석기. 테스트에서는 NAT이 없으므로 대역을 주입한다.
         self.resolve_dst = resolve_dst or original_dst
+        # 원래 목적지를 탐지 경로와 공유하는 레지스트리(original_dst.py). 없으면 공유
+        # 안 함 — 탐지가 DNAT된 목적지를 그대로 본다(개발/테스트).
+        self.original_dst_registry = original_dst_registry
 
     async def _await_verdict(self, sessions):
         """판정이 나올 때까지 짧게 기다린다. 이상이면 즉시, 아니면 상한까지.
@@ -191,6 +194,11 @@ class TrafficHandler:
         # 이 시점에 조회할 세션 id는 클라이언트 쪽 하나로 충분하다.
         sessions = {SessionKey(peer[0], dst[0], peer[1], dst[1]).session_id(
             self.config.max_sessions)}
+
+        # 탐지 경로가 lo에서 보는 프레임은 목적지가 DNAT되어 있다. 원래 목적지를 등록해
+        # 탐지가 되찾을 수 있게 한다 (original_dst.py). 소스(메인 컨테이너)의 5-tuple이 키다.
+        if self.original_dst_registry is not None:
+            self.original_dst_registry.register(peer[0], peer[1], dst[0], dst[1])
 
         head = await reader.peek(8)
         is_http = http_message.looks_like_http_request(head)
