@@ -87,6 +87,8 @@ async def main():
         max_sessions=adapter.max_sessions,
         max_header_bytes=config.MAX_HEADER_BYTES,
         max_body_bytes=config.MAX_BODY_BYTES,
+        verdict_wait=config.VERDICT_WAIT,
+        verdict_poll=config.VERDICT_POLL,
         relay_safe_methods=config.RELAY_SAFE_METHODS,
     )
     handler = TrafficHandler(

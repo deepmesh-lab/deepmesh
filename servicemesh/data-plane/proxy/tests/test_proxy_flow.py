@@ -104,7 +104,9 @@ class Harness:
 
     def __init__(self, *, backend_body=b'{"content":"normal"}',
                  sibling_body=b'{"content":"normal"}', allow=True,
-                 treat_client_as_local=False, always_malicious=False):
+                 treat_client_as_local=False, always_malicious=False,
+                 verdict_wait=0.0):
+        self._verdict_wait = verdict_wait
         self.backend = FakeBackend(backend_body)
         self.sibling = FakeBackend(sibling_body)
         self.control_plane = FakeControlPlane(allow=allow)
@@ -128,6 +130,8 @@ class Harness:
             max_sessions=MAX_SESSIONS,
             local_sources=frozenset({"127.0.0.1"}) if self._treat_client_as_local
             else frozenset({POD_IP}),
+            verdict_wait=self._verdict_wait,
+            verdict_poll=0.01,
         )
         relay = RelayClient(self.peers, self.sibling.port, timeout=3.0, max_body_bytes=1 << 20)
         self.telemetry = RecordingTelemetry()
@@ -153,6 +157,17 @@ class Harness:
         data = await asyncio.wait_for(reader.read(1 << 20), timeout=5.0)
         writer.close()
         return data, local_port
+
+    async def request_with_late_verdict(self, raw):
+        """요청을 보내되, 프록시가 판정을 기다리는 동안 늦게 판정을 주입한다."""
+        reader, writer = await asyncio.open_connection("127.0.0.1", self.port)
+        self._pending_port = writer.get_extra_info("sockname")[1]
+        writer.write(raw)
+        await writer.drain()
+        asyncio.create_task(self._late())
+        data = await asyncio.wait_for(reader.read(1 << 20), timeout=5.0)
+        writer.close()
+        return data
 
     def mark_malicious_client_session(self, local_port):
         key = SessionKey("127.0.0.1", self.dst[0], local_port, self.dst[1])
@@ -435,3 +450,46 @@ def test_응답_이벤트의_상대는_요청을_보낸_클라이언트다():
     assert event["srcIp"] == POD_IP
     assert event["dstIp"] == "127.0.0.1"      # 테스트에서 클라이언트는 loopback이다
     assert event["verdict"] == "RELAY"
+
+
+# --- 판정 대기 (Request Verifier 경로) --------------------------------------
+#
+# 판정은 세션당 프레임 5개가 스니퍼에 잡혀야 나온다. 요청이 도착한 직후엔 아직 안 찼으므로
+# 즉시 조회하면 판정이 없어 이상 트래픽도 verify 없이 전달된다. 짧게 기다려야 Drop 경로가
+# 산다 — 시나리오 1(K8s API 정찰 → Drop)이 여기에 달려 있다.
+
+def test_요청_직후_판정이_없으면_기다렸다_Drop한다():
+    async def scenario():
+        h = Harness(allow=False, treat_client_as_local=True, verdict_wait=1.0)
+        await h.start()
+        # 판정을 늦게 넣는다 — 요청이 도착하고 나서야 스니퍼가 윈도우를 채운 상황.
+        async def late_verdict():
+            await asyncio.sleep(0.1)
+            key = SessionKey("127.0.0.1", h.dst[0], h._pending_port, h.dst[1])
+            h.verdicts.put(key.session_id(MAX_SESSIONS),
+                           Detection(is_malicious=True, score=-0.9))
+        h._late = late_verdict
+        try:
+            data = await h.request_with_late_verdict(GET_POST)
+        finally:
+            await h.stop()
+        return data, h.control_plane.signatures
+
+    data, signatures = run(scenario())
+    # 검증이 거부(allow=False)했으므로 Drop → 목적지 응답이 클라이언트에 가지 않는다.
+    assert signatures, "판정이 늦게 와도 Request Verifier를 거쳐야 한다"
+    assert b"normal" not in data
+
+
+def test_판정_대기가_0이면_즉시_전달한다():
+    # verdict_wait=0이면 예전 동작 — 판정이 아직 없으니 그대로 전달(fail-open).
+    async def scenario():
+        h = Harness(allow=False, treat_client_as_local=True, verdict_wait=0.0)
+        await h.start()
+        try:
+            return await h.request(GET_POST)
+        finally:
+            await h.stop()
+
+    data, _ = run(scenario())
+    assert b"normal" in data   # 판정 없음 → Forward

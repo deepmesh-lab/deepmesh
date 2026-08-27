@@ -49,6 +49,11 @@ VERIFY_FAIL_OPEN = _bool("VERIFY_FAIL_OPEN", False)
 SNIFF_IFACE = os.environ.get("SNIFF_IFACE", "lo")
 # 세션 판정 유효 기간(초). 지나면 판정 없음(=Forward)으로 되돌아간다.
 VERDICT_TTL = _float("VERDICT_TTL", 10.0)
+# 요청 경로가 판정을 기다리는 상한(초)과 폴링 간격. 판정은 세션당 프레임 5개가 스니퍼에
+# 잡혀야 나오는데, 요청이 도착한 직후엔 아직 안 찼다. 짧게 기다려 Drop 경로를 살린다.
+# 0으로 두면 대기 없이 즉시 조회(예전 동작).
+VERDICT_WAIT = _float("VERDICT_WAIT", 0.5)
+VERDICT_POLL = _float("VERDICT_POLL", 0.02)
 # Converter가 max_sessions를 제공하지 않을 때 쓰는 기본값
 DEFAULT_MAX_SESSIONS = _int("MAX_SESSIONS", 1024)
 

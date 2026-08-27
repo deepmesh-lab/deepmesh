@@ -53,6 +53,10 @@ class HandlerConfig:
     max_sessions: int = 1024
     max_header_bytes: int = 64 * 1024
     max_body_bytes: int = 8 * 1024 * 1024
+    # 요청 경로가 판정을 기다리는 상한(초). 검지가 프레임 5개를 채우기 전에 조회하면
+    # 판정이 없어 Drop 경로가 죽는다. 0이면 대기 없이 즉시 조회(예전 동작).
+    verdict_wait: float = 0.5
+    verdict_poll: float = 0.02
     relay_safe_methods: frozenset = field(
         default_factory=lambda: frozenset({"GET", "HEAD", "OPTIONS"})
     )
@@ -109,6 +113,30 @@ class TrafficHandler:
         self.telemetry = telemetry
         # 원목적지 해석기. 테스트에서는 NAT이 없으므로 대역을 주입한다.
         self.resolve_dst = resolve_dst or original_dst
+
+    async def _await_verdict(self, sessions):
+        """판정이 나올 때까지 짧게 기다린다. 이상이면 즉시, 아니면 상한까지.
+
+        상한(verdict_wait)까지 기다려도 판정이 없으면 None을 돌려주고 호출부는 전달한다
+        (판정 없음 = Forward, 기존 동작과 같다). 이상 판정이 먼저 나오면 기다림을 끊는다.
+        benign 판정만 나온 경우도 결정된 것이므로 그대로 돌려준다.
+
+        상한을 0으로 두면 이 대기가 꺼져 예전처럼 즉시 조회한다.
+        """
+        detection = self.verdicts.get_any(sessions)
+        if detection is not None or self.config.verdict_wait <= 0:
+            return detection
+        deadline = self._loop_time() + self.config.verdict_wait
+        while self._loop_time() < deadline:
+            await asyncio.sleep(self.config.verdict_poll)
+            detection = self.verdicts.get_any(sessions)
+            if detection is not None and detection.is_malicious:
+                return detection
+        return self.verdicts.get_any(sessions)
+
+    @staticmethod
+    def _loop_time():
+        return asyncio.get_event_loop().time()
 
     def _emit(self, observation, verdict, category, stage, passed, signature,
               endpoint=None, src_port=None):
@@ -182,7 +210,11 @@ class TrafficHandler:
         else:
             signature = sig.tcp_signature(dst[0], dst[1])
 
-        detection = self.verdicts.get_any(sessions)
+        # 판정을 잠깐 기다린다. 판정은 세션당 프레임 5개가 스니퍼에 잡혀야 나오는데,
+        # 여기서 바로 조회하면 아직 1~2 프레임뿐이라 판정이 없다. 그러면 이상 트래픽도
+        # verify 없이 전달돼 Drop 경로가 죽는다(응답 경로만 살아 시나리오 1이 시연 안 됨).
+        # 같은 프레임을 검지 스레드가 동시에 처리하므로 짧게 기다리면 판정이 나온다.
+        detection = await self._await_verdict(sessions)
         if detection is not None and detection.is_malicious:
             kind = "outbound request" if is_http else "outbound tcp"
             method = first_request.method if is_http else "TCP"
