@@ -206,6 +206,18 @@ class TopologyApiTest {
 	}
 
 	@Test
+	void 이벤트의_목적지에_서비스_이름이_붙는다() throws Exception {
+		// 프록시는 IP만 보낸다. 조회 시점에 역매핑하지 않으면 화면에 "알 수 없음"으로 뜬다.
+		cluster.workload("post-service", 2, 2, true);
+		ingest(batch("post-service", "10.96.0.1", 0, "drop", "DROP"));
+
+		mockMvc.perform(get("/dashboard/events"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.items[0].dstIp").value("10.96.0.1"))
+				.andExpect(jsonPath("$.items[0].peerServiceName").value("kubernetes"));
+	}
+
+	@Test
 	void 서비스가_없으면_404다() throws Exception {
 		mockMvc.perform(get("/dashboard/topology/services/nope"))
 				.andExpect(status().isNotFound())

@@ -3,6 +3,8 @@ package com.deepmesh.dashboard.stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.deepmesh.dashboard.event.DetectionEvent;
+import com.deepmesh.dashboard.event.PeerNaming;
+import com.deepmesh.dashboard.topology.UnavailableClusterTopologySource;
 import com.deepmesh.dashboard.stream.dto.StreamEvents;
 import java.time.Clock;
 import java.time.Instant;
@@ -52,7 +54,12 @@ class DetectionBroadcasterTest {
 	@BeforeEach
 	void setUp() {
 		hub = new RecordingHub();
-		broadcaster = new DetectionBroadcaster(hub);
+		broadcaster = new DetectionBroadcaster(hub, peerNaming());
+	}
+
+	/** K8s 없이 도는 대역. 이름은 안 붙지만 배치·알림 규칙 검증에는 무관하다. */
+	private static PeerNaming peerNaming() {
+		return new PeerNaming(new UnavailableClusterTopologySource());
 	}
 
 	private static DetectionEvent event(long id, String category, String verdict) {

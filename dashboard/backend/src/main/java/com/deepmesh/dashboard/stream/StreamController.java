@@ -2,6 +2,7 @@ package com.deepmesh.dashboard.stream;
 
 import com.deepmesh.dashboard.event.DetectionEvent;
 import com.deepmesh.dashboard.event.DetectionEventRepository;
+import com.deepmesh.dashboard.event.PeerNaming;
 import com.deepmesh.dashboard.event.dto.EventResponse;
 import com.deepmesh.dashboard.stream.dto.StreamEvents;
 import com.deepmesh.dashboard.topology.dto.TopologyResponse;
@@ -41,6 +42,7 @@ public class StreamController {
 	private final SseHub hub;
 	private final DetectionEventRepository eventRepository;
 	private final TopologyBroadcaster topology;
+	private final PeerNaming peerNaming;
 
 	@GetMapping(value = "/dashboard/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public ResponseEntity<SseEmitter> stream(
@@ -88,7 +90,7 @@ public class StreamController {
 			hub.sendTo(emitter, "gap", StreamEvents.ReplayTruncated.of(
 					(int) missed - events.size(), events.get(0).getOccurredAt()), null);
 		}
-		List<EventResponse> items = events.stream().map(EventResponse::from).toList();
+		List<EventResponse> items = peerNaming.name(events);
 		hub.sendTo(emitter, "detection",
 				StreamEvents.DetectionBatch.of(hub.now(), items, 0),
 				String.valueOf(events.get(events.size() - 1).getEventId()));

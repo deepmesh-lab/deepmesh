@@ -1,6 +1,7 @@
 package com.deepmesh.dashboard.stream;
 
 import com.deepmesh.dashboard.event.DetectionEvent;
+import com.deepmesh.dashboard.event.PeerNaming;
 import com.deepmesh.dashboard.event.dto.EventResponse;
 import com.deepmesh.dashboard.stream.dto.StreamEvents;
 import java.util.ArrayList;
@@ -27,6 +28,8 @@ public class DetectionBroadcaster {
 
 	private final ConcurrentLinkedQueue<DetectionEvent> pending = new ConcurrentLinkedQueue<>();
 	private final SseHub hub;
+	/** 목적지 이름을 REST 목록과 같은 규칙으로 붙인다. */
+	private final PeerNaming peerNaming;
 
 	/** 수집 직후 호출된다. 저장이 끝난 이벤트만 들어와야 재전송 커서와 어긋나지 않는다. */
 	public void enqueue(List<DetectionEvent> events) {
@@ -48,7 +51,7 @@ public class DetectionBroadcaster {
 		int dropped = trim(batch);
 		batch.sort(Comparator.comparing(DetectionEvent::getEventId));
 
-		List<EventResponse> items = batch.stream().map(EventResponse::from).toList();
+		List<EventResponse> items = peerNaming.name(batch);
 		String maxEventId = String.valueOf(batch.get(batch.size() - 1).getEventId());
 		hub.broadcastWithId("detection",
 				StreamEvents.DetectionBatch.of(hub.now(), items, dropped), maxEventId);

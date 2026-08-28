@@ -45,7 +45,7 @@ public class EventDetailResponse {
 	) {
 	}
 
-	public static EventDetailResponse from(DetectionEvent e, JsonNode packets) {
+	public static EventDetailResponse from(DetectionEvent e, EventResponse base, JsonNode packets) {
 		Verification verification = new Verification(
 				e.getVerificationStage(),
 				e.getVerificationPassed(),
@@ -53,7 +53,7 @@ public class EventDetailResponse {
 				verificationDetail(e),
 				null);                   // 프록시가 검증 왕복 시간을 보내면 채움
 		return new EventDetailResponse(
-				EventResponse.from(e), e.getWindowSize(), e.getModelId(), packets, verification);
+				base, e.getWindowSize(), e.getModelId(), packets, verification);
 	}
 
 	private static String verificationDetail(DetectionEvent e) {

@@ -31,6 +31,8 @@ public class EventQueryService {
 
 	private final DetectionEventRepository repository;
 	private final ObjectMapper objectMapper;
+	/** 목적지 IP를 서비스 이름으로 되돌린다. 토폴로지 엣지와 같은 규칙을 쓴다. */
+	private final PeerNaming peerNaming;
 
 	@Transactional(readOnly = true)
 	public EventPageResponse list(EventQuery q) {
@@ -57,7 +59,7 @@ public class EventQueryService {
 			rows.sort((a, b) -> Long.compare(b.getEventId(), a.getEventId()));
 		}
 
-		List<EventResponse> items = rows.stream().map(EventResponse::from).toList();
+		List<EventResponse> items = peerNaming.name(rows);
 		String nextCursor = hasNext && !items.isEmpty()
 				? items.get(items.size() - 1).eventId() : null;
 		return new EventPageResponse(items, nextCursor, hasNext, size);
@@ -68,7 +70,7 @@ public class EventQueryService {
 		DetectionEvent e = repository.findById(eventId)
 				.orElseThrow(() -> new ApiException(ErrorCode.EVENT_NOT_FOUND,
 						"해당 탐지 이벤트가 존재하지 않습니다."));
-		return EventDetailResponse.from(e, parsePackets(e.getPacketsJson()));
+		return EventDetailResponse.from(e, peerNaming.name(e), parsePackets(e.getPacketsJson()));
 	}
 
 	private Specification<DetectionEvent> buildSpec(EventQuery q, boolean ascending) {
@@ -136,4 +138,5 @@ public class EventQueryService {
 			OffsetDateTime to
 	) {
 	}
+
 }
