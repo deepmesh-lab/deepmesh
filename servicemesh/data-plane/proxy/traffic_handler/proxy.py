@@ -253,7 +253,7 @@ class TrafficHandler:
                 await self._pipe_raw(reader, client_writer, up_reader, up_writer)
                 return
             await self._forward_requests(reader, client_writer, up_reader, up_writer,
-                                         dst, sessions, first_request)
+                                         peer, dst, sessions, first_request)
         except ValueError as exc:
             logger.debug("HTTP 파싱 실패 — 연결 종료: %s", exc)
         finally:
@@ -280,7 +280,7 @@ class TrafficHandler:
         )
 
     async def _forward_requests(self, reader, client_writer, up_reader, up_writer,
-                                dst, sessions, request):
+                                peer, dst, sessions, request):
         """검증을 통과한 outbound 요청과 그 응답을 계속 중계한다."""
         while request is not None:
             up_writer.write(request.to_bytes())

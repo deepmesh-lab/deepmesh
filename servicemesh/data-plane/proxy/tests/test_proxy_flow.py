@@ -663,3 +663,36 @@ def test_원목적지_등록이_연결이_사는_동안_유지된다():
     assert resolved == [dst, dst, dst]  # 요청마다 원목적지를 되찾을 수 있다
     assert gone                          # 연결이 끝나면 지워진다(포트 재사용 오해 방지)
 
+
+def test_keepalive_두번째_요청도_이상이면_Drop한다():
+    # 같은 연결의 2번째 요청부터는 전달 루프가 집행한다. Drop 이벤트에 실을 클라이언트
+    # 포트를 그 루프가 들고 있지 않으면 집행이 통째로 예외로 죽는다.
+    async def scenario():
+        h = Harness(allow=False, treat_client_as_local=True)
+        await h.start()
+        try:
+            reader, writer = await asyncio.open_connection("127.0.0.1", h.port)
+            local_port = writer.get_extra_info("sockname")[1]
+            buffered = http_message.BufferedReader(reader, 65536)
+
+            writer.write(KEEPALIVE_GET)          # 1번째 — 판정 없음 → 전달
+            await writer.drain()
+            first = await http_message.read_response(buffered, "GET", 1 << 20)
+
+            h.mark_malicious_client_session(local_port)
+            writer.write(KEEPALIVE_GET)          # 2번째 — 이상 판정 + 검증 거부
+            await writer.drain()
+            second = await asyncio.wait_for(reader.read(1 << 20), timeout=5.0)
+            writer.close()
+            return (first.body, second, list(h.telemetry.events),
+                    len(h.backend.requests), local_port)
+        finally:
+            await h.stop()
+
+    first_body, second, events, forwarded, local_port = run(scenario())
+    assert b'{"content":"normal"}' == first_body
+    assert second == b""            # 2번째 응답 없이 연결이 닫힌다
+    assert forwarded == 1           # 2번째 요청은 목적지로 나가지 않았다
+    drops = [e for e in events if e["verdict"] == "DROP"]
+    assert len(drops) == 1
+    assert drops[0]["srcPort"] == local_port
