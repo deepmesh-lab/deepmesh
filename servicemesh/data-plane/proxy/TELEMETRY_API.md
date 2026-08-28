@@ -167,7 +167,7 @@ dstIp = 목적지 (peerServiceName 역매핑)
 | 필드 | 상태 |
 |---|---|
 | `direction`, 5-tuple, `sessionId`, `ocsvmScore`, `verdict`, `category`, `signature`, `verification*` | **지금 가능** — 프레임 파싱 + 집행 결과로 채움 |
-| `detectionLatencyMs` | 어댑터 호출 시간 측정으로 채움 |
+| `detectionLatencyMs` | **채움** — 어댑터가 classify 호출 전후로 측정 |
 | `packets[]` (5패킷 메타) | **Traffic Converter 결합 대기** — 윈도우를 Converter가 들고 있어 판정과 함께 반환받아야 함 |
 | `modelId` | Anomaly Detector 결합 시 확정 |
 

@@ -139,3 +139,36 @@ def test_탐지_모듈이_없으면_항상_판정_없음():
     adapter = NullDetectionAdapter()
     assert adapter.analyze(1, FRAME) is None
     assert adapter.max_sessions == 1024
+
+
+# --- 추론 지연 측정 ----------------------------------------------------------
+import time as _time
+
+
+def test_판정에_추론_지연이_실린다():
+    # classify가 시간을 쓰면 그 시간이 latency_ms로 잡혀야 한다.
+    class SlowDetector:
+        def classify(self, session_id, image):
+            _time.sleep(0.02)                      # 20ms
+            return Detection(is_malicious=True, score=-0.5)
+
+    adapter = DetectionAdapter(RecordingConverter([[1]]), SlowDetector())
+    detection = adapter.analyze(1, FRAME)
+    assert detection is not None
+    assert detection.latency_ms >= 15             # 20ms 근처(여유)
+
+
+def test_윈도우_미충족이면_지연을_재지_않는다():
+    # push가 None이면 classify를 안 하므로 잴 추론이 없다.
+    adapter = DetectionAdapter(RecordingConverter([None]), RecordingDetector())
+    assert adapter.analyze(1, FRAME) is None
+
+
+def test_지연이_텔레메트리_이벤트에_실린다():
+    from traffic_handler.telemetry import build_event
+    from traffic_handler.ports import SessionObservation
+    obs = SessionObservation(
+        detection=Detection(is_malicious=True, score=-0.4, latency_ms=1.2345),
+        direction="REQUEST", src_ip="10.0.0.1", src_port=1, dst_ip="10.0.0.2", dst_port=2)
+    event = build_event(obs, "DROP", "drop", "REQUEST_VERIFIER", False, "sig")
+    assert event["detectionLatencyMs"] == 1.2345

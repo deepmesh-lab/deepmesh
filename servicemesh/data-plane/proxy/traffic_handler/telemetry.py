@@ -176,6 +176,7 @@ def build_event(observation, verdict, category, stage, passed, signature, protoc
         "category": category,
         "verificationStage": stage,
         "verificationPassed": passed,
-        "detectionLatencyMs": 0.0,   # Anomaly Detector 결합 시 측정값으로 대체
+        # 모델 추론 시간(ms). 어댑터가 classify 호출 전후로 잰다(adapter.py).
+        "detectionLatencyMs": round(getattr(observation, "latency_ms", 0.0), 4),
         "signature": signature,
     }
