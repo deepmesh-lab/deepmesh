@@ -5,6 +5,15 @@ metadata:
   namespace: deepmesh
 spec:
   replicas: 2
+  # 순차 롤아웃 — 한 번에 Pod 하나씩만 교체한다. 사이드카 이미지가 ~367MB라
+  # 여러 replica가 동시에 pull하면 호스트 NIC에 대용량 전송이 몰린다(구형 랜카드
+  # 버그로 실제 장애를 겪었다). maxSurge:0으로 새 Pod을 먼저 띄우지 않아 pull이
+  # 정확히 하나씩 순차로 일어난다.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
   selector:
     matchLabels:
       app: comment-service
