@@ -356,7 +356,11 @@ class TrafficHandler:
 
     async def _apply_response_policy(self, request, response, sessions, dst, peer):
         """Algorithm 1 line 10~15. 이상 응답을 형제 Pod의 참조 응답으로 교체한다."""
-        detection = self.verdicts.get_any(sessions)
+        # 요청 경로와 같은 이유로 판정을 잠깐 기다린다. 응답이 나가는 순간엔 탐지 스레드가
+        # 아직 윈도우를 못 채워 판정이 없다. 즉시 조회하면 이상 응답도 그냥 나가고 Relay가
+        # 죽는다(시나리오 2). Drop 경로에만 대기를 넣고 여기 빼먹으면 요청은 막는데 응답은
+        # 못 바꾼다.
+        detection = await self._await_verdict(sessions)
         if detection is None or not detection.is_malicious:
             return response, FORWARD
 

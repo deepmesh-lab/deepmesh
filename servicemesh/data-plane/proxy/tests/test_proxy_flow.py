@@ -553,3 +553,57 @@ def test_비HTTP_바이트는_중복없이_그대로_중계된다():
     # 목적지가 받은 바이트가 보낸 것과 정확히 같아야 한다(중복이면 길이가 2배가 된다).
     assert received == payload, "비HTTP 바이트가 원본과 달라졌다(중복 전송 의심)"
     assert echoed == payload    # 왕복도 무결
+
+
+# --- 응답 판정 대기 (Relay 경로) --------------------------------------------
+#
+# 응답이 나가는 순간엔 탐지가 아직 윈도우를 못 채워 판정이 없다. 즉시 조회하면 이상
+# 응답도 그냥 나가 Relay가 죽는다. 요청 경로처럼 짧게 기다려야 한다 — 시나리오 2가
+# 여기 달려 있다.
+
+def test_응답_판정이_늦게_와도_Relay한다():
+    async def scenario():
+        # 변조 응답(tampered) vs 형제 정상 응답(normal). 판정을 늦게 주입한다.
+        h = Harness(backend_body=b'{"content":"tampered"}',
+                    sibling_body=b'{"content":"normal"}', verdict_wait=1.0)
+        await h.start()
+        h.peers.update([{"name": "fe-b", "ip": "127.0.0.1"}])
+
+        reader, writer = await asyncio.open_connection("127.0.0.1", h.port)
+        local_port = writer.get_extra_info("sockname")[1]
+
+        async def late():
+            await asyncio.sleep(0.1)   # 응답이 프록시에 도착한 뒤에야 판정이 생기는 상황
+            key = SessionKey("127.0.0.1", h.dst[0], local_port, h.dst[1])
+            h.verdicts.put(key.session_id(MAX_SESSIONS),
+                           Detection(is_malicious=True, score=-0.9))
+        asyncio.create_task(late())
+
+        writer.write(GET_POST)
+        await writer.drain()
+        data = await asyncio.wait_for(reader.read(1 << 20), timeout=5.0)
+        writer.close()
+        await h.stop()
+        return data
+
+    data = run(scenario())
+    # 판정이 늦게 왔어도 형제의 정상 응답으로 교체(Relay)돼야 한다.
+    assert b"normal" in data
+    assert b"tampered" not in data
+
+
+def test_응답_판정_대기가_0이면_변조_응답이_그대로_나간다():
+    # verdict_wait=0이면 예전 동작 — 판정 전에 응답이 나가 Relay 못 함.
+    async def scenario():
+        h = Harness(backend_body=b'{"content":"tampered"}',
+                    sibling_body=b'{"content":"normal"}', verdict_wait=0.0)
+        await h.start()
+        h.peers.update([{"name": "fe-b", "ip": "127.0.0.1"}])
+        try:
+            data, _ = await h.request(GET_POST)
+            return data
+        finally:
+            await h.stop()
+
+    data = run(scenario())
+    assert b"tampered" in data   # 판정 없음 → 원본 그대로
