@@ -57,9 +57,11 @@ async def main():
     )
 
     verdicts = VerdictStore(ttl=config.VERDICT_TTL)
-    # 집행 경로가 원래 목적지를 등록하고 탐지 경로가 읽는다. TTL은 판정 유효기간과 같은
-    # 척도로 두면 충분하다(연결 하나의 수명보다 길기만 하면 된다).
-    original_dst_registry = OriginalDstRegistry(ttl=config.VERDICT_TTL, clock=time.monotonic)
+    # 집행 경로가 원래 목적지를 등록하고 탐지 경로가 읽는다. 항목은 연결이 끝날 때
+    # 지워지고, TTL은 그러지 못한 항목만 걷어내는 안전망이다(original_dst.py).
+    original_dst_registry = OriginalDstRegistry(
+        ttl=config.ORIGINAL_DST_TTL, clock=time.monotonic
+    )
     peers = PeerRegistry()
     control_plane = ControlPlaneClient(
         config.CONTROL_PLANE_URL, config.POD_IP, config.VERIFY_TIMEOUT, config.VERIFY_FAIL_OPEN

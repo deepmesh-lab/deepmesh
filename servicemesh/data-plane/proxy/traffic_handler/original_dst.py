@@ -14,6 +14,12 @@ iptables REDIRECT는 egress의 목적지를 127.0.0.1:PROXY_PORT로 DNAT한다. 
 집행 경로는 SO_ORIGINAL_DST로 원래 목적지를 이미 안다. 연결을 받을 때 그 값을
 (소스 IP, 소스 포트) 키로 등록해두면, 탐지 경로가 outbound 프레임에서 같은 키로 원래
 목적지를 되찾아 위 셋을 모두 바로잡을 수 있다.
+
+항목의 수명은 연결의 수명이다 — 등록은 연결을 받을 때, 삭제는 연결이 끝날 때. east-west
+호출은 커넥션 풀(Apache HttpClient, keep-alive 60s·TTL 5분)을 타서 한 연결이 몇 분을 살고
+그 위로 요청이 계속 흐른다. 짧은 TTL로 끊으면 첫 요청만 복원되고 그 뒤로는 전부
+127.0.0.1:9011로 남아 평시 엣지가 external로 뭉친다. TTL은 핸들러가 비정상 종료해
+unregister를 못 부른 항목을 걷어내는 안전망일 뿐이다.
 """
 
 import threading
@@ -32,6 +38,11 @@ class OriginalDstRegistry:
         with self._lock:
             self._map[(src_ip, src_port)] = (dst_ip, dst_port, self._clock())
             self._evict_locked()
+
+    def unregister(self, src_ip, src_port):
+        """연결이 끝났다. 포트가 재사용돼 다른 목적지로 오해되기 전에 지운다."""
+        with self._lock:
+            self._map.pop((src_ip, src_port), None)
 
     def resolve(self, src_ip, src_port):
         with self._lock:

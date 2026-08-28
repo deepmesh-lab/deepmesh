@@ -176,7 +176,15 @@ class TrafficHandler:
 
             reader = http_message.BufferedReader(client_reader, self.config.max_header_bytes)
             if peer[0] in self.config.local_sources:
-                await self._handle_outbound_request(reader, client_writer, peer, dst)
+                # 탐지 경로가 lo에서 보는 프레임은 목적지가 DNAT되어 있다. 원래 목적지를
+                # 연결이 사는 동안 등록해 탐지가 되찾게 한다 (original_dst.py). 소스(메인
+                # 컨테이너)의 5-tuple이 키다. keep-alive 연결은 이 등록 하나로 몇 분간
+                # 흐르는 모든 요청을 덮는다.
+                self._register_original_dst(peer, dst)
+                try:
+                    await self._handle_outbound_request(reader, client_writer, peer, dst)
+                finally:
+                    self._unregister_original_dst(peer)
             else:
                 await self._handle_inbound(reader, client_writer, peer, dst)
         except (ConnectionResetError, BrokenPipeError, asyncio.IncompleteReadError):
@@ -194,11 +202,6 @@ class TrafficHandler:
         # 이 시점에 조회할 세션 id는 클라이언트 쪽 하나로 충분하다.
         sessions = {SessionKey(peer[0], dst[0], peer[1], dst[1]).session_id(
             self.config.max_sessions)}
-
-        # 탐지 경로가 lo에서 보는 프레임은 목적지가 DNAT되어 있다. 원래 목적지를 등록해
-        # 탐지가 되찾을 수 있게 한다 (original_dst.py). 소스(메인 컨테이너)의 5-tuple이 키다.
-        if self.original_dst_registry is not None:
-            self.original_dst_registry.register(peer[0], peer[1], dst[0], dst[1])
 
         head = await reader.peek(8)
         is_http = http_message.looks_like_http_request(head)
@@ -255,6 +258,14 @@ class TrafficHandler:
             logger.debug("HTTP 파싱 실패 — 연결 종료: %s", exc)
         finally:
             _close(up_writer)
+
+    def _register_original_dst(self, peer, dst):
+        if self.original_dst_registry is not None:
+            self.original_dst_registry.register(peer[0], peer[1], dst[0], dst[1])
+
+    def _unregister_original_dst(self, peer):
+        if self.original_dst_registry is not None:
+            self.original_dst_registry.unregister(peer[0], peer[1])
 
     async def _pipe_raw(self, reader, client_writer, up_reader, up_writer):
         """비HTTP TCP(TLS·MySQL 등)는 파싱하지 않고 그대로 중계한다.

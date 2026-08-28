@@ -67,6 +67,11 @@ class DetectionPipeline:
         if not is_from_main_container(key, self._target_port, self._proxy_port):
             return None
 
+        # 방향은 목적지를 되돌리기 '전에' 읽는다. 복원 후에는 dst_port가 PROXY_PORT가
+        # 아니라 원래 목적지 포트(8080·443…)라, 나중에 읽으면 복원에 성공한 요청이 전부
+        # 방향 없음이 된다 — 이벤트의 direction이 비는 원인이었다.
+        direction = last_packet_direction(key, self._target_port, self._proxy_port)
+
         # outbound(메인→프록시)면 DNAT된 목적지를 원래 목적지로 되돌린다. 컨버터의 포트
         # 라우팅과 세션 id, 관측 dst가 모두 원본을 기준으로 서야 집행 경로와 맞물린다.
         if self._original_dst is not None and key.dst_port == self._proxy_port:
@@ -84,7 +89,7 @@ class DetectionPipeline:
         # 추론하는 대신 여기서 관측한 값을 쓰고, 텔레메트리가 그대로 실어 보낸다.
         observation = SessionObservation(
             detection=detection,
-            direction=last_packet_direction(key, self._target_port, self._proxy_port),
+            direction=direction,
             src_ip=key.src_ip, src_port=key.src_port,
             dst_ip=key.dst_ip, dst_port=key.dst_port,
         )

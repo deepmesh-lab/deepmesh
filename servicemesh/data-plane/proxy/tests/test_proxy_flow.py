@@ -7,8 +7,10 @@
 
 import asyncio
 import json
+import time
 
 from traffic_handler import http_message
+from traffic_handler.original_dst import OriginalDstRegistry
 from traffic_handler.peers import PeerRegistry
 from traffic_handler.ports import Detection, SessionKey
 from traffic_handler.proxy import HandlerConfig, TrafficHandler
@@ -105,8 +107,9 @@ class Harness:
     def __init__(self, *, backend_body=b'{"content":"normal"}',
                  sibling_body=b'{"content":"normal"}', allow=True,
                  treat_client_as_local=False, always_malicious=False,
-                 verdict_wait=0.0):
+                 verdict_wait=0.0, original_dst_registry=None):
         self._verdict_wait = verdict_wait
+        self.original_dst_registry = original_dst_registry
         self.backend = FakeBackend(backend_body)
         self.sibling = FakeBackend(sibling_body)
         self.control_plane = FakeControlPlane(allow=allow)
@@ -138,6 +141,7 @@ class Harness:
         self.handler = TrafficHandler(
             config, self.verdicts, self.peers, self.control_plane, relay,
             resolve_dst=lambda sock: self.dst, telemetry=self.telemetry,
+            original_dst_registry=self.original_dst_registry,
         )
         self._server = await asyncio.start_server(self.handler.handle, "127.0.0.1", 0)
         self.port = self._server.sockets[0].getsockname()[1]
@@ -175,6 +179,8 @@ class Harness:
 
 
 GET_POST = b"GET /api/posts/5 HTTP/1.1\r\nHost: post-service:8080\r\nConnection: close\r\n\r\n"
+# 연결을 닫지 않는 요청. east-west 호출(Apache HttpClient 풀)이 실제로 이 모양이다.
+KEEPALIVE_GET = b"GET /api/posts/5 HTTP/1.1\r\nHost: post-service:8080\r\n\r\n"
 POST_POST = (b"POST /api/posts HTTP/1.1\r\nHost: post-service:8080\r\n"
              b"Content-Type: application/json\r\nContent-Length: 14\r\n"
              b"Connection: close\r\n\r\n{\"title\":\"hi\"}")
@@ -607,3 +613,53 @@ def test_응답_판정_대기가_0이면_변조_응답이_그대로_나간다():
 
     data = run(scenario())
     assert b"tampered" in data   # 판정 없음 → 원본 그대로
+
+
+# --- keep-alive 연결 (커넥션 풀) ---------------------------------------------
+#
+# east-west 호출은 Apache HttpClient 풀을 타서 한 연결이 몇 분을 살고 그 위로 요청이
+# 계속 흐른다. 연결 하나 = 요청 하나인 공격 스크립트에서는 드러나지 않는 경로다.
+
+
+async def _wait_until(predicate, timeout=5.0):
+    """조건이 참이 될 때까지 이벤트 루프를 돌린다. 연결 종료 정리는 비동기로 끝난다."""
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
+        if predicate():
+            return True
+        await asyncio.sleep(0.01)
+    return predicate()
+
+
+def test_원목적지_등록이_연결이_사는_동안_유지된다():
+    # 등록이 연결보다 먼저 사라지면 두 번째 요청부터 탐지가 DNAT된 127.0.0.1:9011을
+    # 그대로 보고, 평시 엣지가 목적지 서비스 대신 external로 뭉친다.
+    async def scenario():
+        registry = OriginalDstRegistry(ttl=600.0, clock=time.monotonic)
+        h = Harness(treat_client_as_local=True, original_dst_registry=registry)
+        await h.start()
+        try:
+            reader, writer = await asyncio.open_connection("127.0.0.1", h.port)
+            local_port = writer.get_extra_info("sockname")[1]
+            buffered = http_message.BufferedReader(reader, 65536)
+
+            resolved = []
+            for _ in range(3):
+                writer.write(KEEPALIVE_GET)
+                await writer.drain()
+                await http_message.read_response(buffered, "GET", 1 << 20)
+                resolved.append(registry.resolve("127.0.0.1", local_port))
+
+            writer.close()
+            gone = await _wait_until(
+                lambda: registry.resolve("127.0.0.1", local_port) is None
+            )
+            return resolved, gone, h.dst
+        finally:
+            await h.stop()
+
+    resolved, gone, dst = run(scenario())
+    assert resolved == [dst, dst, dst]  # 요청마다 원목적지를 되찾을 수 있다
+    assert gone                          # 연결이 끝나면 지워진다(포트 재사용 오해 방지)
+

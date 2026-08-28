@@ -54,6 +54,10 @@ VERDICT_TTL = _float("VERDICT_TTL", 10.0)
 # 0으로 두면 대기 없이 즉시 조회(예전 동작).
 VERDICT_WAIT = _float("VERDICT_WAIT", 0.5)
 VERDICT_POLL = _float("VERDICT_POLL", 0.02)
+# 원목적지 레지스트리 항목의 수명(초). 정상 경로에서는 연결이 끝날 때 지워지므로 이
+# 값은 그러지 못한 항목만 걷어내는 안전망이다. 커넥션 풀의 연결 TTL(5분)보다 짧으면
+# 살아 있는 연결의 매핑을 지우게 되므로 그보다 넉넉히 잡는다.
+ORIGINAL_DST_TTL = _float("ORIGINAL_DST_TTL", 600.0)
 # Converter가 max_sessions를 제공하지 않을 때 쓰는 기본값
 DEFAULT_MAX_SESSIONS = _int("MAX_SESSIONS", 1024)
 

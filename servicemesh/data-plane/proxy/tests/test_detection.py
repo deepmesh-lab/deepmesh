@@ -175,3 +175,25 @@ def test_레지스트리에_없으면_DNAT된_값을_그대로_쓴다():
     )
     pipeline.run()
     assert captured["dport"] == PROXY_PORT   # 복원 안 됨 → 9011 그대로
+
+
+def test_목적지를_복원해도_방향은_요청으로_남는다():
+    # 복원하면 dst_port가 PROXY_PORT가 아니라 원래 목적지 포트(8080)가 된다. 방향을
+    # 복원 뒤에 읽으면 복원에 성공한 요청이 전부 방향 없음이 되어, 대시보드 이벤트의
+    # direction이 빈다.
+    frame = make_frame("10.244.1.5", "127.0.0.1", 5555, PROXY_PORT)
+    registry = OriginalDstRegistry(ttl=100, clock=_clock)
+    registry.register("10.244.1.5", 5555, "10.100.234.122", 8080)
+    session_id = SessionKey("10.244.1.5", "10.100.234.122", 5555, 8080).session_id(1024)
+
+    adapter = DetectionAdapter(WindowConverter(window=WINDOW), ScriptedDetector({session_id}))
+    verdicts = VerdictStore(ttl=10.0)
+    pipeline = DetectionPipeline(
+        ListPacketSource([frame for _ in range(WINDOW)]), adapter, verdicts,
+        TARGET_PORT, PROXY_PORT, original_dst=registry,
+    )
+    pipeline.run()
+
+    obs = verdicts.get(session_id)
+    assert obs.direction == "REQUEST"
+    assert (obs.dst_ip, obs.dst_port) == ("10.100.234.122", 8080)
