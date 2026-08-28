@@ -73,7 +73,7 @@ public class TopologyService {
 
 	public TopologyService(
 			@Value("${deepmesh.namespace:deepmesh}") String defaultNamespace,
-			@Value("${deepmesh.topology.exclude:dashboard-backend,dashboard-frontend}") String[] excluded,
+			@Value("${deepmesh.topology.exclude:dashboard-backend,dashboard-frontend,traffic-gen}") String[] excluded,
 			ClusterTopologySource cluster,
 			DetectionEventRepository eventRepository,
 			StatsBucketRepository statsRepository,
