@@ -142,6 +142,32 @@ class DashboardQueryTest {
 	}
 
 	@Test
+	void stats_timeseries는_저장offset과_조회offset이_달라도_집계한다() throws Exception {
+		// 프록시는 UTC로, 화면은 KST로 시각을 다룬다. 같은 순간이면 offset이 달라도
+		// 버킷에 잡혀야 한다. 버킷 키를 OffsetDateTime으로 쓰면 여기서 0이 된다.
+		String body = """
+				{
+				  "proxy": { "serviceName": "post", "podName": "post-a", "namespace": "default" },
+				  "windowStats": { "from": "2026-08-08T04:22:00Z", "to": "2026-08-08T04:22:01Z",
+				                   "benign": 10, "cleared": 0, "drop": 5, "relay": 0 },
+				  "events": []
+				}
+				""";
+		mockMvc.perform(post("/ingest/events").contentType(MediaType.APPLICATION_JSON).content(body))
+				.andExpect(status().isOk());
+
+		// UTC 04:22 == KST 13:22. seed(13:21)와 다른 버킷이라 drop 5만 잡혀야 한다.
+		mockMvc.perform(get("/dashboard/stats/timeseries")
+						.param("from", "2026-08-08T13:20:00+09:00")
+						.param("to", "2026-08-08T13:23:00+09:00")
+						.param("interval", "1m")
+						.param("metric", "verdict"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.buckets[?(@.drop == 5)]").exists())
+				.andExpect(jsonPath("$.buckets[?(@.benign == 10)]").exists());
+	}
+
+	@Test
 	void stats_timeseries_버킷수_초과는_400_INVALID_TIME_RANGE() throws Exception {
 		mockMvc.perform(get("/dashboard/stats/timeseries")
 						.param("from", "2026-08-08T00:00:00+09:00")

@@ -108,13 +108,14 @@ public class StatsService {
 	// --- verdict 시계열: 빈 구간도 0으로 채운다 ---
 	private List<TimeseriesResponse.Bucket> verdictBuckets(OffsetDateTime start, OffsetDateTime end,
 			Duration step, String serviceName) {
-		Map<OffsetDateTime, long[]> acc = new TreeMap<>();
+		// 버킷 키는 epoch 초로 잡는다. windowTo는 UTC로, 조회 범위는 KST로 올 수 있어
+		// OffsetDateTime을 키로 쓰면 같은 순간도 offset이 달라 매핑이 빗나간다(모든 버킷 0).
+		Map<Long, long[]> acc = new TreeMap<>();
 		for (OffsetDateTime t = start; t.isBefore(end); t = t.plus(step)) {
-			acc.put(t, new long[4]);
+			acc.put(t.toEpochSecond(), new long[4]);
 		}
 		for (StatsBucket b : bucketsIn(start, end, serviceName)) {
-			OffsetDateTime key = alignDown(b.getWindowTo(), step);
-			long[] a = acc.get(key);
+			long[] a = acc.get(alignDown(b.getWindowTo(), step).toEpochSecond());
 			if (a != null) {
 				a[0] += b.getBenign();
 				a[1] += b.getCleared();
@@ -124,23 +125,23 @@ public class StatsService {
 		}
 		return acc.entrySet().stream()
 				.map(e -> TimeseriesResponse.Bucket.verdict(
-						e.getKey(), e.getValue()[0], e.getValue()[1], e.getValue()[2], e.getValue()[3]))
+						atKst(e.getKey()), e.getValue()[0], e.getValue()[1], e.getValue()[2], e.getValue()[3]))
 				.toList();
 	}
 
 	// --- latency 시계열: 데이터 없으면 null ---
 	private List<TimeseriesResponse.Bucket> latencyBuckets(OffsetDateTime start, OffsetDateTime end,
 			Duration step, String serviceName) {
-		Map<OffsetDateTime, List<Double>> acc = new TreeMap<>();
+		// verdictBuckets와 같은 이유로 epoch 초를 키로 쓴다 (offset 불일치 방지).
+		Map<Long, List<Double>> acc = new TreeMap<>();
 		for (OffsetDateTime t = start; t.isBefore(end); t = t.plus(step)) {
-			acc.put(t, new ArrayList<>());
+			acc.put(t.toEpochSecond(), new ArrayList<>());
 		}
 		for (DetectionEvent e : eventsIn(start, end, serviceName)) {
 			if (e.getDetectionLatencyMs() == null) {
 				continue;
 			}
-			OffsetDateTime key = alignDown(e.getOccurredAt(), step);
-			List<Double> list = acc.get(key);
+			List<Double> list = acc.get(alignDown(e.getOccurredAt(), step).toEpochSecond());
 			if (list != null) {
 				list.add(e.getDetectionLatencyMs());
 			}
@@ -149,9 +150,9 @@ public class StatsService {
 				.map(e -> {
 					List<Double> v = e.getValue();
 					if (v.isEmpty()) {
-						return TimeseriesResponse.Bucket.latency(e.getKey(), null, null, null, null);
+						return TimeseriesResponse.Bucket.latency(atKst(e.getKey()), null, null, null, null);
 					}
-					return TimeseriesResponse.Bucket.latency(e.getKey(),
+					return TimeseriesResponse.Bucket.latency(atKst(e.getKey()),
 							percentile(v, 50), percentile(v, 95), percentile(v, 99), max(v));
 				})
 				.toList();
@@ -229,5 +230,11 @@ public class StatsService {
 		long epoch = t.toEpochSecond();
 		long floored = epoch - Math.floorMod(epoch, stepSec);
 		return OffsetDateTime.ofInstant(java.time.Instant.ofEpochSecond(floored), t.getOffset());
+	}
+
+	/** epoch 초를 KST 표기 OffsetDateTime으로. 화면은 KST로 시각을 읽는다(명세 1-1). */
+	private static OffsetDateTime atKst(long epochSecond) {
+		return OffsetDateTime.ofInstant(java.time.Instant.ofEpochSecond(epochSecond),
+				java.time.ZoneOffset.ofHours(9));
 	}
 }
