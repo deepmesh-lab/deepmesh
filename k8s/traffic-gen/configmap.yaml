@@ -1,0 +1,177 @@
+# 상시 정상 트래픽 생성기의 시나리오 스크립트.
+#
+# Deployment의 args에 인라인하지 않고 ConfigMap으로 뺀 이유: 시나리오는 앞으로도 손볼
+# 물건이고, YAML 블록 스칼라 안에서는 셸 따옴표가 읽기 어려워진다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traffic-gen-script
+  namespace: deepmesh
+data:
+  gen.sh: |
+    #!/bin/sh
+    # 정상 사용자의 방문을 흉내내 MSA 공개 API 전체를 고르게 두드린다.
+    #
+    # 설계 원칙 셋:
+    #
+    #   1. 공개 API(/api/**)만 부른다. /internal/**은 서비스끼리 부르는 경로이고,
+    #      그 호출이 바로 사이드카가 판정하는 east-west egress다. 생성기가 직접 부르면
+    #      관측하려는 대상을 우리가 위조하는 셈이 된다.
+    #
+    #   2. 판정이 benign으로 서야 한다. 모델은 속도가 아니라 '행동 시퀀스(순서·경로·반복
+    #      ·표적)'를 본다(common.sh). 같은 두 호출을 같은 간격으로 무한 반복하면 그 자체가
+    #      열거(enumeration) 패턴이라 이상으로 잡힌다. 그래서 방문마다 할 일과 순서를
+    #      뽑고, 호출 사이에 사람이 화면을 보는 만큼의 간격을 둔다.
+    #
+    #   3. 끊겼다 이어져야 한다. 방문 사이를 보통 20~90초, 5번에 한 번은 6~9분 비운다.
+    #      토폴로지가 5분 창을 보기 때문에, 짧은 유휴만으로는 선의 굵기만 변하고 절대
+    #      끊기지 않는다. 창보다 긴 유휴가 섞여야 선이 사라졌다 다시 생긴다. 계속 같은
+    #      굵기로 켜져 있으면 지금 무슨 일이 일어나는지가 화면에서 구분되지 않는다.
+    set -u
+
+    A=http://auth-service:8080
+    P=http://post-service:8080
+    C=http://comment-service:8080
+    F=http://frontend:80
+    JSON='Content-Type: application/json'
+    UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/128.0 Safari/537.36'
+    PW=pw12345678
+    USERS=/tmp/users
+    JAR=/tmp/cookies
+
+    # ── 잡동사니 ────────────────────────────────────────────────────────────
+    rnd()   { echo $(( RANDOM % $1 )); }                    # 0..$1-1
+    between() { echo $(( $1 + RANDOM % ($2 - $1 + 1) )); }
+    think() { sleep $(between 1 4); }                       # 화면을 보는 시간
+    maybe() { [ $(rnd 100) -lt $1 ]; }                      # $1% 확률
+    jnum()  { sed -n "s/.*\"$1\":\([0-9][0-9]*\).*/\1/p"; }
+    tok()   { sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p'; }
+
+    # 응답 본문이 필요 없는 호출. 브라우저 지문을 달아 보낸다.
+    hit()   { curl -s -o /dev/null -m 10 -A "$UA" -H 'Accept: application/json' "$@"; }
+    # 본문이 필요한 호출
+    get()   { curl -s -m 10 -A "$UA" -H 'Accept: application/json' "$@"; }
+
+    # ── 계정 ────────────────────────────────────────────────────────────────
+    signup() {
+      U="user$(date +%s)$(rnd 1000)"
+      hit -X POST $A/api/auth/signup -H "$JSON" \
+        -d "{\"username\":\"$U\",\"password\":\"$PW\"}"
+      echo "$U" >> $USERS
+      echo "$U"
+    }
+
+    pick_user() {
+      n=$(wc -l < $USERS)
+      sed -n "$(( RANDOM % n + 1 ))p" $USERS
+    }
+
+    # 로그인은 refreshToken 쿠키를 받는다. refresh·logout이 그 쿠키를 요구하므로
+    # 쿠키 항아리를 방문 내내 들고 다닌다(브라우저와 같은 모양).
+    login() {
+      rm -f $JAR
+      TOK=$(get -c $JAR -X POST $A/api/auth/login -H "$JSON" \
+        -d "{\"username\":\"$1\",\"password\":\"$PW\"}" | tok)
+      H="Authorization: Bearer $TOK"
+    }
+
+    # ── 한 번의 방문 ────────────────────────────────────────────────────────
+    visit() {
+      # 5번에 한 번은 처음 온 사람. 계정이 너무 늘지 않게, 쌓인 뒤로는 드물게만 가입한다.
+      if [ ! -s $USERS ]; then
+        U=$(signup)
+      elif [ "$(wc -l < $USERS)" -lt 8 ] && maybe 20; then
+        U=$(signup); think
+      elif maybe 5; then
+        U=$(signup); think
+      else
+        U=$(pick_user)
+      fi
+
+      # 사람은 API가 아니라 페이지를 먼저 연다. frontend는 정적 파일만 서빙하고
+      # API 프록시가 없어서(nginx.conf), 브라우저가 서비스로 직접 호출하는 구조다.
+      # 그래서 frontend는 이 페이지 로드로만 트래픽에 등장한다.
+      hit $F/
+      maybe 70 && hit $F/assets/index.js
+      think
+
+      login "$U"
+      [ -z "${TOK:-}" ] && { echo "로그인 실패($U) — 이번 방문 건너뜀"; return; }
+
+      MINE=""   # 이번 방문에 내가 쓴 글
+
+      # 들어오면 목록부터 본다
+      LIST=$(get $P/api/posts -H "$H")
+      IDS=$(echo "$LIST" | grep -o '"postId":[0-9]*' | cut -d: -f2 | tail -20)
+      think
+
+      # 글 몇 개를 열어본다(0~3). 목록에 있는 실제 글만.
+      i=0; n=$(rnd 4)
+      while [ $i -lt $n ] && [ -n "$IDS" ]; do
+        i=$((i+1))
+        T=$(echo "$IDS" | sed -n "$(( RANDOM % $(echo "$IDS" | wc -l) + 1 ))p")
+        hit $P/api/posts/$T -H "$H"
+        # 글을 열면 대개 댓글도 본다 (comment→post)
+        maybe 70 && { think; hit $C/api/comments/$T/comments -H "$H"; }
+        think
+      done
+
+      # 글을 쓴다 (post→auth)
+      if maybe 45; then
+        MINE=$(get -X POST $P/api/posts -H "$H" -H "$JSON" \
+          -d "{\"title\":\"오늘의 글 $(rnd 1000)\",\"content\":\"본문 $(date +%H:%M:%S)\"}" | jnum postId)
+        think
+        # 쓰고 나서 고치기도 한다 (post→auth)
+        maybe 40 && [ -n "$MINE" ] && {
+          hit -X PUT $P/api/posts/$MINE -H "$H" -H "$JSON" \
+            -d '{"title":"오늘의 글(수정)","content":"고쳐 씀"}'
+          think
+        }
+      fi
+
+      # 댓글을 단다 (comment→auth, comment→post)
+      if maybe 55; then
+        T=${MINE:-$(echo "$IDS" | sed -n '1p')}
+        if [ -n "$T" ]; then
+          CID=$(get -X POST $C/api/comments/$T/comments -H "$H" -H "$JSON" \
+            -d "{\"content\":\"댓글 $(rnd 1000)\"}" | jnum commentId)
+          think
+          maybe 35 && [ -n "$CID" ] && {
+            hit -X PUT $C/api/comments/$CID -H "$H" -H "$JSON" -d '{"content":"댓글 고침"}'
+            think
+          }
+          maybe 45 && [ -n "$CID" ] && {
+            hit -X DELETE $C/api/comments/$CID -H "$H"
+            think
+          }
+        fi
+      fi
+
+      # 오래 머물면 토큰을 갱신한다 (쿠키의 refreshToken 사용)
+      maybe 25 && { hit -b $JAR -X POST $A/api/auth/refresh; think; }
+
+      # 내 글을 지운다. post-service가 comment-service에 댓글 정리를 시킨다
+      # (post→comment 엣지는 이 경로에서만 생긴다). 쌓이지 않게 대개 지운다.
+      maybe 70 && [ -n "$MINE" ] && { hit -X DELETE $P/api/posts/$MINE -H "$H"; think; }
+
+      # 나갈 때 로그아웃하는 사람도, 창만 닫는 사람도 있다
+      maybe 60 && hit -b $JAR -X POST $A/api/auth/logout -H "$H"
+    }
+
+    # ── 본체 ────────────────────────────────────────────────────────────────
+    : > $USERS
+    echo "생성기 시작"
+    v=0
+    while :; do
+      v=$((v+1))
+      visit
+      # 토폴로지가 5분 창을 보므로, 20~90초 쉬어서는 선이 굵기만 변할 뿐 안 끊긴다.
+      # 5번에 한 번은 창보다 길게(6~9분) 비워 선이 실제로 사라졌다 다시 생기게 한다.
+      if maybe 20; then
+        idle=$(between 360 540)
+      else
+        idle=$(between 20 90)
+      fi
+      echo "방문 $v 끝 — ${idle}초 쉼"
+      sleep $idle
+    done
