@@ -65,10 +65,16 @@ spec:
                   key: JWT_SECRET
             - name: SPRING_JPA_HIBERNATE_DDL_AUTO
               value: update
+            # actuator를 서비스 포트 밖으로 옮긴다. iptables는 TARGET_PORT(8080)만
+            # 리다이렉트하므로, 이 포트로 오는 kubelet 프로브는 사이드카를 거치지 않는다.
+            # 그대로 두면 10초마다 오는 프로브 응답이 탐지 대상이 되어, 대시보드에
+            # 사라지지 않는 <서비스>→external 선으로 남는다(트래픽이 아니라 관측 장치다).
+            - name: MANAGEMENT_SERVER_PORT
+              value: "8081"
           readinessProbe:
             httpGet:
               path: /actuator/health
-              port: 8080
+              port: 8081
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 3
