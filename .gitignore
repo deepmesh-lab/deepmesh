@@ -31,6 +31,10 @@ __pycache__/
 *.pyc
 *.pth
 *.pkl
+# 배포 중인 가중치만 예외로 저장소에 둔다 (servicemesh/data-plane/model/README.md).
+# .dockerignore가 이 디렉터리를 빼므로 이미지에도 빌드 컨텍스트에도 들어가지 않는다.
+!servicemesh/data-plane/model/**/*.pkl
+!servicemesh/data-plane/model/**/*.pth
 .venv/
 
 # Claude Code / Superpowers (내부 도구)

@@ -73,7 +73,8 @@ DETECTION_ENGINE_FACTORY = os.environ.get("DETECTION_ENGINE_FACTORY", "")
 # 위 팩토리가 traffic_handler.detection_binding을 가리킬 때만 읽힌다.
 #
 # 가중치 루트. <root>/<svc>/<svc>_model/ 구조를 기대한다(detection/README.md 참고).
-# 가중치는 저장소에 없고 PVC를 여기에 마운트한다.
+# 가중치 원본은 servicemesh/data-plane/model/에 있고, 런타임에는 그것을 올린 PVC를
+# 여기에 마운트한다(이미지에는 굽지 않는다).
 MODEL_ROOT = os.environ.get("MODEL_ROOT", "/app/model")
 # 모델 디렉터리 이름. k8s는 SERVICE_NAME을 "auth-service"로 주는데 모델 쪽 이름은
 # "auth"라 접미사를 뗀다. 이 규칙이 안 맞는 서비스가 생기면 값을 직접 준다.

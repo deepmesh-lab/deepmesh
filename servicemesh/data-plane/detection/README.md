@@ -56,7 +56,8 @@ cd servicemesh/data-plane/proxy && python -m pytest -q
 
 ## 모델 (2026-08-27 기준)
 
-가중치는 이 저장소에 없다. PVC로 주입한다 — 아래 "가중치 배치" 참고.
+가중치 원본은 `../model/`에 있다(`model/README.md`). 이미지에는 굽지 않고 PVC로
+주입한다 — 아래 "가중치 배치" 참고.
 
 | 서비스 | 표현 | arch | threshold | 재보정 | OCSVM SV |
 | --- | --- | --- | --- | --- | --- |

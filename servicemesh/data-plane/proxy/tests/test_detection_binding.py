@@ -7,7 +7,7 @@
     2. 실제 컨버터와의 결합   numpy 필요
     3. 실제 모델 추론        numpy·torch·scikit-learn과 MODEL_ROOT 가중치 필요
 
-가중치는 저장소에 없고 PVC로 주입하므로(detection/README.md), 3층은 MODEL_ROOT를
+가중치는 이미지에 굽지 않고 PVC로 주입하므로(detection/README.md), 3층은 MODEL_ROOT를
 실제 가중치 디렉터리로 지정했을 때만 돈다.
 """
 

@@ -15,6 +15,9 @@
 경로를 가리킨다. `detector.Detector`가 `<MODEL_ROOT>/<svc>/<svc>_model/`을 찾는다
 (`servicemesh/data-plane/detection/README.md`).
 
+올릴 파일의 원본은 저장소에 있다 — `servicemesh/data-plane/model/`. 이 볼륨은 그
+사본이고, 어긋나면 클러스터가 쓰는 것은 이쪽이다.
+
 ## 모델 교체
 
 이미지 재빌드가 필요 없다. dev-server에서 파일만 덮어쓴 뒤 재시작한다.
