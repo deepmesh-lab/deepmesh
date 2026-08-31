@@ -5,6 +5,15 @@ metadata:
   namespace: deepmesh
 spec:
   replicas: 2
+  # 순차 롤아웃 — 한 번에 Pod 하나씩만 교체한다. 사이드카 이미지가 ~367MB라
+  # 여러 replica가 동시에 pull하면 호스트 NIC에 대용량 전송이 몰린다(구형 랜카드
+  # 버그로 실제 장애를 겪었다). maxSurge:0으로 새 Pod을 먼저 띄우지 않아 pull이
+  # 정확히 하나씩 순차로 일어난다.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
   selector:
     matchLabels:
       app: post-service
@@ -17,6 +26,8 @@ spec:
         # 사이드카와 같은 이미지를 쓰되 root로 실행한다 (iptables 규칙 주입).
         - name: iptables-init
           image: kimgooner/reverse-proxy:v2
+          # 태그를 재사용하므로 기본값(IfNotPresent)이면 노드가 캐시된 옛 이미지를 쓴다.
+          imagePullPolicy: Always
           command: ["sh", "/app/iptables.sh"]
           env:
             - name: TARGET_PORT
@@ -31,7 +42,7 @@ spec:
 
       containers:
         - name: post-service
-          image: uicheolshin/post-service:latest
+          image: kimgooner/post-service:v4
           ports:
             - containerPort: 8080
           env:
@@ -54,10 +65,16 @@ spec:
                   key: JWT_SECRET
             - name: SPRING_JPA_HIBERNATE_DDL_AUTO
               value: update
+            # actuator를 서비스 포트 밖으로 옮긴다. iptables는 TARGET_PORT(8080)만
+            # 리다이렉트하므로, 이 포트로 오는 kubelet 프로브는 사이드카를 거치지 않는다.
+            # 그대로 두면 10초마다 오는 프로브 응답이 탐지 대상이 되어, 대시보드에
+            # 사라지지 않는 <서비스>→external 선으로 남는다(트래픽이 아니라 관측 장치다).
+            - name: MANAGEMENT_SERVER_PORT
+              value: "8081"
           readinessProbe:
             httpGet:
               path: /actuator/health
-              port: 8080
+              port: 8081
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 3
@@ -66,6 +83,8 @@ spec:
         # (SIDECAR_CONTAINER=reverse-proxy)
         - name: reverse-proxy
           image: kimgooner/reverse-proxy:v2
+          # 태그를 재사용하므로 기본값(IfNotPresent)이면 노드가 캐시된 옛 이미지를 쓴다.
+          imagePullPolicy: Always
           ports:
             - containerPort: 9011
           securityContext:
@@ -95,8 +114,36 @@ spec:
                 configMapKeyRef:
                   name: deepmesh-config
                   key: CONTROL_PLANE_URL
+            # 판정 배치를 보낼 곳. 비어 있으면 텔레메트리가 통째로 비활성이라
+            # 대시보드에 데이터가 하나도 오지 않는다.
+            - name: DASHBOARD_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: deepmesh-config
+                  key: DASHBOARD_URL
+            # 탐지 모듈 결합. 이 둘이 없으면 build_adapter가 NullDetectionAdapter를
+            # 골라 Forward 전용으로 동작한다 (proxy/README.md).
+            - name: CONVERTER_FACTORY
+              value: traffic_handler.detection_binding:build_converter
+            - name: DETECTOR_FACTORY
+              value: traffic_handler.detection_binding:build_detector
+            - name: MODEL_ROOT
+              value: /app/model
+            # 모델 디렉터리 이름. SERVICE_NAME에서 "-service"를 뗀 값이 기본이지만,
+            # 어긋나면 기동 시 FileNotFoundError로 드러나므로 명시해 둔다.
+            - name: DETECTION_SERVICE
+              value: post
+          volumeMounts:
+            - name: model
+              mountPath: /app/model
+              readOnly: true
           readinessProbe:
             tcpSocket:
               port: 9011
             initialDelaySeconds: 3
             periodSeconds: 5
+
+      volumes:
+        - name: model
+          persistentVolumeClaim:
+            claimName: deepmesh-model-pvc

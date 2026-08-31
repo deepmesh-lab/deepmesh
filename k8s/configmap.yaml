@@ -11,3 +11,7 @@ data:
   POST_SERVICE_URL: "http://post-service:8080"
   COMMENT_SERVICE_URL: "http://comment-service:8080"
   CONTROL_PLANE_URL: "http://192.168.56.10:8080"
+  DASHBOARD_DB_URL: "jdbc:mysql://mysql-service:3306/dashboard_db?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&createDatabaseIfNotExist=true"
+  # 사이드카가 판정 배치를 보내는 곳. 비어 있으면 텔레메트리가 통째로 비활성이라
+  # 대시보드에 데이터가 하나도 오지 않는다.
+  DASHBOARD_URL: "http://dashboard-backend:8080"

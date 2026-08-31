@@ -17,10 +17,10 @@ import json
 import logging
 import socket
 import struct
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from . import http_message, signature as sig
-from .ports import SessionKey
+from .ports import SessionKey, SessionObservation
 from .relay import RELAY_MARKER
 from .telemetry import build_event
 
@@ -53,6 +53,10 @@ class HandlerConfig:
     max_sessions: int = 1024
     max_header_bytes: int = 64 * 1024
     max_body_bytes: int = 8 * 1024 * 1024
+    # 요청 경로가 판정을 기다리는 상한(초). 검지가 프레임 5개를 채우기 전에 조회하면
+    # 판정이 없어 Drop 경로가 죽는다. 0이면 대기 없이 즉시 조회(예전 동작).
+    verdict_wait: float = 0.5
+    verdict_poll: float = 0.02
     relay_safe_methods: frozenset = field(
         default_factory=lambda: frozenset({"GET", "HEAD", "OPTIONS"})
     )
@@ -84,9 +88,23 @@ def original_dst(sock):
         return (sockname[0], sockname[1]) if sockname else None
 
 
+def _with_endpoint(observation, pod_ip, endpoint, src_port):
+    """관측에 실제 상대 주소를 입힌다.
+
+    집행 경로는 SessionObservation 대신 Detection만 받을 수도 있다(ports.py) — 탐지가
+    5-tuple을 동반하기 전에 만들어진 판정이 그렇다. 그 경우에도 상대 주소만은 실어 보낸다.
+    """
+    if isinstance(observation, SessionObservation):
+        return replace(observation, src_ip=pod_ip,
+                       src_port=observation.src_port or src_port,
+                       dst_ip=endpoint[0], dst_port=endpoint[1])
+    return SessionObservation(detection=observation, src_ip=pod_ip, src_port=src_port,
+                              dst_ip=endpoint[0], dst_port=endpoint[1])
+
+
 class TrafficHandler:
     def __init__(self, config, verdicts, peers, control_plane, relay_client,
-                 resolve_dst=None, telemetry=None):
+                 resolve_dst=None, telemetry=None, original_dst_registry=None):
         self.config = config
         self.verdicts = verdicts
         self.peers = peers
@@ -95,11 +113,51 @@ class TrafficHandler:
         self.telemetry = telemetry
         # 원목적지 해석기. 테스트에서는 NAT이 없으므로 대역을 주입한다.
         self.resolve_dst = resolve_dst or original_dst
+        # 원래 목적지를 탐지 경로와 공유하는 레지스트리(original_dst.py). 없으면 공유
+        # 안 함 — 탐지가 DNAT된 목적지를 그대로 본다(개발/테스트).
+        self.original_dst_registry = original_dst_registry
 
-    def _emit(self, observation, verdict, category, stage, passed, signature):
-        """집행 결과를 텔레메트리로 보낸다. telemetry가 없으면 무시."""
+    async def _await_verdict(self, sessions):
+        """판정이 나올 때까지 짧게 기다린다. 이상이면 즉시, 아니면 상한까지.
+
+        상한(verdict_wait)까지 기다려도 판정이 없으면 None을 돌려주고 호출부는 전달한다
+        (판정 없음 = Forward, 기존 동작과 같다). 이상 판정이 먼저 나오면 기다림을 끊는다.
+        benign 판정만 나온 경우도 결정된 것이므로 그대로 돌려준다.
+
+        상한을 0으로 두면 이 대기가 꺼져 예전처럼 즉시 조회한다.
+        """
+        detection = self.verdicts.get_any(sessions)
+        if detection is not None or self.config.verdict_wait <= 0:
+            return detection
+        deadline = self._loop_time() + self.config.verdict_wait
+        while self._loop_time() < deadline:
+            await asyncio.sleep(self.config.verdict_poll)
+            detection = self.verdicts.get_any(sessions)
+            if detection is not None and detection.is_malicious:
+                return detection
+        return self.verdicts.get_any(sessions)
+
+    @staticmethod
+    def _loop_time():
+        return asyncio.get_event_loop().time()
+
+    def _emit(self, observation, verdict, category, stage, passed, signature,
+              endpoint=None, src_port=None):
+        """집행 결과를 텔레메트리로 보낸다. telemetry가 없으면 무시.
+
+        관측의 5-tuple을 집행 경로가 아는 값으로 바로잡는다. 탐지는 lo에서 프레임을 잡기
+        때문에 관측된 주소가 메인 컨테이너↔프록시 루프백 구간(127.0.0.1 양쪽)이다. 그대로
+        보내면 백엔드가 목적지를 서비스로 역매핑하지 못해, 토폴로지 엣지가 전부 external로
+        뭉치고 이벤트의 peerServiceName이 비어 화면에 "알 수 없음"으로 뜬다.
+
+        TELEMETRY_API.md가 규정하는 값은 이것이다 — srcIp는 관측 주체(내 Pod), dstIp는
+        상대. 상대가 누구인지는 집행 경로만 안다: outbound는 SO_ORIGINAL_DST로 얻은 원
+        목적지이고, 응답은 요청을 보내온 외부 클라이언트다.
+        """
         if self.telemetry is None:
             return
+        if endpoint is not None:
+            observation = _with_endpoint(observation, self.config.pod_ip, endpoint, src_port)
         self.telemetry.emit(
             build_event(observation, verdict, category, stage, passed, signature)
         )
@@ -118,7 +176,15 @@ class TrafficHandler:
 
             reader = http_message.BufferedReader(client_reader, self.config.max_header_bytes)
             if peer[0] in self.config.local_sources:
-                await self._handle_outbound_request(reader, client_writer, peer, dst)
+                # 탐지 경로가 lo에서 보는 프레임은 목적지가 DNAT되어 있다. 원래 목적지를
+                # 연결이 사는 동안 등록해 탐지가 되찾게 한다 (original_dst.py). 소스(메인
+                # 컨테이너)의 5-tuple이 키다. keep-alive 연결은 이 등록 하나로 몇 분간
+                # 흐르는 모든 요청을 덮는다.
+                self._register_original_dst(peer, dst)
+                try:
+                    await self._handle_outbound_request(reader, client_writer, peer, dst)
+                finally:
+                    self._unregister_original_dst(peer)
             else:
                 await self._handle_inbound(reader, client_writer, peer, dst)
         except (ConnectionResetError, BrokenPipeError, asyncio.IncompleteReadError):
@@ -155,17 +221,23 @@ class TrafficHandler:
         else:
             signature = sig.tcp_signature(dst[0], dst[1])
 
-        detection = self.verdicts.get_any(sessions)
+        # 판정을 잠깐 기다린다. 판정은 세션당 프레임 5개가 스니퍼에 잡혀야 나오는데,
+        # 여기서 바로 조회하면 아직 1~2 프레임뿐이라 판정이 없다. 그러면 이상 트래픽도
+        # verify 없이 전달돼 Drop 경로가 죽는다(응답 경로만 살아 시나리오 1이 시연 안 됨).
+        # 같은 프레임을 검지 스레드가 동시에 처리하므로 짧게 기다리면 판정이 나온다.
+        detection = await self._await_verdict(sessions)
         if detection is not None and detection.is_malicious:
             kind = "outbound request" if is_http else "outbound tcp"
             method = first_request.method if is_http else "TCP"
             target = first_request.target if is_http else "{}:{}".format(*dst)
             if not await self.control_plane.verify(signature):
                 self._log(DROP, kind, method, target, detection)
-                self._emit(detection, VERDICT_DROP, CAT_DROP, STAGE_REQUEST, False, signature)
+                self._emit(detection, VERDICT_DROP, CAT_DROP, STAGE_REQUEST, False, signature,
+                           endpoint=dst, src_port=peer[1])
                 return  # Algorithm 1 line 19-20: Drop 후 종료
             self._log(FORWARD, kind + "(검증 통과)", method, target, detection)
-            self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_REQUEST, True, signature)
+            self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_REQUEST, True, signature,
+                       endpoint=dst, src_port=peer[1])
 
         upstream_ip = LOCALHOST if dst[0] == self.config.pod_ip else dst[0]
         try:
@@ -181,25 +253,34 @@ class TrafficHandler:
                 await self._pipe_raw(reader, client_writer, up_reader, up_writer)
                 return
             await self._forward_requests(reader, client_writer, up_reader, up_writer,
-                                         dst, sessions, first_request)
+                                         peer, dst, sessions, first_request)
         except ValueError as exc:
             logger.debug("HTTP 파싱 실패 — 연결 종료: %s", exc)
         finally:
             _close(up_writer)
 
+    def _register_original_dst(self, peer, dst):
+        if self.original_dst_registry is not None:
+            self.original_dst_registry.register(peer[0], peer[1], dst[0], dst[1])
+
+    def _unregister_original_dst(self, peer):
+        if self.original_dst_registry is not None:
+            self.original_dst_registry.unregister(peer[0], peer[1])
+
     async def _pipe_raw(self, reader, client_writer, up_reader, up_writer):
-        """비HTTP TCP(MySQL 등)는 파싱하지 않고 그대로 중계한다."""
-        pending = reader.buffered
-        if pending:
-            up_writer.write(pending)
-            await up_writer.drain()
+        """비HTTP TCP(TLS·MySQL 등)는 파싱하지 않고 그대로 중계한다.
+
+        peek로 버퍼에 남은 앞부분을 따로 밀어넣지 않는다. read_some이 버퍼를 먼저
+        소비하므로, 여기서 buffered를 또 쓰면 같은 바이트가 두 번 나가 TLS ClientHello가
+        중복돼 핸드셰이크가 깨진다(:443 K8s API·:3306 MySQL 연결 실패의 원인이었다).
+        """
         await asyncio.gather(
             _pipe(reader, up_writer),
             _pipe(up_reader, client_writer),
         )
 
     async def _forward_requests(self, reader, client_writer, up_reader, up_writer,
-                                dst, sessions, request):
+                                peer, dst, sessions, request):
         """검증을 통과한 outbound 요청과 그 응답을 계속 중계한다."""
         while request is not None:
             up_writer.write(request.to_bytes())
@@ -225,10 +306,10 @@ class TrafficHandler:
                     self._log(DROP, "outbound request", request.method, request.target,
                               detection)
                     self._emit(detection, VERDICT_DROP, CAT_DROP, STAGE_REQUEST, False,
-                               signature)
+                               signature, endpoint=dst, src_port=peer[1])
                     return
                 self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_REQUEST, True,
-                           signature)
+                           signature, endpoint=dst, src_port=peer[1])
 
     # -- 3번: inbound 연결의 응답 (Relay 경로) -------------------------------
 
@@ -273,7 +354,7 @@ class TrafficHandler:
                     break
 
                 response, action = await self._apply_response_policy(
-                    request, response, sessions, dst)
+                    request, response, sessions, dst, peer)
                 client_writer.write(response.to_bytes())
                 await client_writer.drain()
 
@@ -284,9 +365,13 @@ class TrafficHandler:
         finally:
             _close(up_writer)
 
-    async def _apply_response_policy(self, request, response, sessions, dst):
+    async def _apply_response_policy(self, request, response, sessions, dst, peer):
         """Algorithm 1 line 10~15. 이상 응답을 형제 Pod의 참조 응답으로 교체한다."""
-        detection = self.verdicts.get_any(sessions)
+        # 요청 경로와 같은 이유로 판정을 잠깐 기다린다. 응답이 나가는 순간엔 탐지 스레드가
+        # 아직 윈도우를 못 채워 판정이 없다. 즉시 조회하면 이상 응답도 그냥 나가고 Relay가
+        # 죽는다(시나리오 2). Drop 경로에만 대기를 넣고 여기 빼먹으면 요청은 막는데 응답은
+        # 못 바꾼다.
+        detection = await self._await_verdict(sessions)
         if detection is None or not detection.is_malicious:
             return response, FORWARD
 
@@ -320,11 +405,12 @@ class TrafficHandler:
             self._log(FORWARD, "outbound response(내용 일치)", request.method,
                       request.target, detection)
             self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_RESPONSE, True,
-                       signature)
+                       signature, endpoint=peer, src_port=self.config.target_port)
             return response, FORWARD
 
         self._log(RELAY, "outbound response", request.method, request.target, detection)
-        self._emit(detection, VERDICT_RELAY, CAT_RELAY, STAGE_RESPONSE, False, signature)
+        self._emit(detection, VERDICT_RELAY, CAT_RELAY, STAGE_RESPONSE, False, signature,
+                   endpoint=peer, src_port=self.config.target_port)
         return reference, RELAY
 
     # -- 1번: 관리 엔드포인트 ------------------------------------------------

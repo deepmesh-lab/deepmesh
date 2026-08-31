@@ -19,6 +19,7 @@ Traffic Handler는 Traffic Converter도 Anomaly Detector도 직접 알지 않는
 
 import inspect
 import logging
+import time
 
 from .ports import Detection
 
@@ -50,6 +51,14 @@ def _as_detection(result):
     if isinstance(result, bool):
         return Detection(is_malicious=result)
     raise TypeError("판정 형식을 해석할 수 없음: {!r}".format(type(result)))
+
+
+def _with_latency(detection, latency_ms):
+    """판정에 추론 지연을 실어 돌려준다. 이미 실려 있으면(0이 아니면) 유지한다."""
+    if detection is None or detection.latency_ms:
+        return detection
+    from dataclasses import replace
+    return replace(detection, latency_ms=latency_ms)
 
 
 def _accepts_two_args(call):
@@ -85,7 +94,10 @@ class DetectionAdapter:
             image = self._converter.push(session_id, frame)
             if image is None:
                 return None
-            return _as_detection(self._detector.classify(session_id, image))
+            start = time.perf_counter()
+            result = self._detector.classify(session_id, image)
+            latency_ms = (time.perf_counter() - start) * 1000.0
+            return _with_latency(_as_detection(result), latency_ms)
         except Exception:
             logger.exception("탐지 실패 — 판정 없음으로 처리(Forward)")
             return None
@@ -121,10 +133,13 @@ class FusedDetectionAdapter:
 
     def analyze(self, session_id, frame):
         try:
+            start = time.perf_counter()
             result = (
                 self._call(session_id, frame) if self._takes_session_id else self._call(frame)
             )
-            return _as_detection(result)
+            latency_ms = (time.perf_counter() - start) * 1000.0
+            detection = _as_detection(result)
+            return _with_latency(detection, latency_ms) if detection is not None else None
         except Exception:
             logger.exception("탐지 실패 — 판정 없음으로 처리(Forward)")
             return None

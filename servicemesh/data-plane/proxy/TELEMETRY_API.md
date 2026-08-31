@@ -49,6 +49,11 @@ Content-Type: application/json
     "drop":    2,
     "relay":   1
   },
+  "peerStats": [
+    { "dstIp": "10.108.4.9", "benign": 126 },
+    { "dstIp": "10.96.0.10", "benign": 2 }
+  ],
+  "peerCount": 2,
   "events": [
     {
       "occurredAt": "2026-08-06T13:21:06.115+09:00",
@@ -77,12 +82,48 @@ Content-Type: application/json
 
 | 채널 | 무엇 | 주기 | 백엔드가 여기서 만드는 것 |
 |---|---|---|---|
-| `windowStats` | benign 포함 4분류 **집계** | 1s | `/dashboard/stats/*`, 엣지 굵기 |
-| `events` | `cleared`·`drop`·`relay` **개별** | 발생 즉시 큐 | `/dashboard/events` 행 |
+| `windowStats` | benign 포함 4분류 **집계** | 1s | `/dashboard/stats/*` |
+| `peerStats` | **목적지별 benign** | 1s | 평시 엣지와 그 굵기 |
+| `events` | `cleared`·`drop`·`relay` **개별** | 발생 즉시 큐 | `/dashboard/events` 행, 공격 엣지 |
 
 평상시 대량 benign을 개별 이벤트로 보내면 부하가 초당 수천 건이 된다. benign은 집계
 숫자로만 보내고, 개별 저장 대상(`cleared/drop/relay`)만 `events`에 담는다.
 `backend-frontend-api.md`의 "benign은 개별 저장하지 않는다"와 일치한다.
+
+## `peerStats` — benign만 목적지를 나른다
+
+토폴로지 엣지는 "관측된 통신"이다. `cleared`·`drop`·`relay`는 `events`가 `dstIp`와 함께
+나르므로 엣지를 만들 수 있지만, **benign은 개별 이벤트가 없어 목적지를 잃는다.** 그러면
+평시 통신 경로(`post → mysql` 등)가 토폴로지에 한 줄도 그려지지 않는다 — 노드만 있고
+선이 없는 그래프가 되고, "평소 없던 `post → kubernetes` 엣지가 공격 시점에 생긴다"는
+대비 효과도 배경이 없어 사라진다.
+
+`peerStats`는 그 빈칸만 메운다.
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `peerStats[].dstIp` | string | 목적지 IP. 상한에 걸려 접힌 몫은 `"other"` |
+| `peerStats[].benign` | int | 그 목적지로 간 benign 시퀀스 수 |
+| `peerCount` | int | 이번 창에서 관측한 서로 다른 목적지 수. **접힌 것도 센다** |
+
+`benign` 합은 `windowStats.benign`과 항상 같다. 상한에 걸려도 `other`로 접힐 뿐
+유실되지 않는다.
+
+**benign 외의 분류는 여기에 담지 않는다.** `events`가 이미 목적지와 함께 나르므로 같은
+사실이 두 경로로 갈라지고, 어긋났을 때 어느 쪽이 맞는지 판단할 근거가 없어진다.
+
+### 상한과 `peerCount`
+
+슬롯은 창당 64개(`telemetry.MAX_PEERS`)다. 평시 목적지는 형제 서비스·mysql·DNS 정도라
+10개 안쪽이고, 포트 스캔은 benign이 아니라 attack 판정을 만들어 이쪽으로 오지 않는다.
+그래도 모델이 스캔을 **놓쳐** benign으로 흘리면 키가 퍼질 수 있어 안전망을 둔다. 슬롯이
+차면 새 목적지는 `other` 한 칸으로 접는다.
+
+접으면 "목적지가 많다"는 신호가 사라지므로 `peerCount`를 따로 보낸다. 카디널리티와 무관한
+값 하나이고, 평시 10에서 갑자기 수천이 되는 것 자체가 스캔 지표다.
+
+엣지 수 자체의 상한은 백엔드 집계 단계가 담당한다 — 공격 이벤트도 스캔 시 수천 개의
+서로 다른 목적지를 만들기 때문에, 두 출처가 합쳐지는 그쪽에 두어야 한 번으로 덮인다.
 
 ## 필드 담당 경계
 
@@ -126,7 +167,7 @@ dstIp = 목적지 (peerServiceName 역매핑)
 | 필드 | 상태 |
 |---|---|
 | `direction`, 5-tuple, `sessionId`, `ocsvmScore`, `verdict`, `category`, `signature`, `verification*` | **지금 가능** — 프레임 파싱 + 집행 결과로 채움 |
-| `detectionLatencyMs` | 어댑터 호출 시간 측정으로 채움 |
+| `detectionLatencyMs` | **채움** — 어댑터가 classify 호출 전후로 측정 |
 | `packets[]` (5패킷 메타) | **Traffic Converter 결합 대기** — 윈도우를 Converter가 들고 있어 판정과 함께 반환받아야 함 |
 | `modelId` | Anomaly Detector 결합 시 확정 |
 

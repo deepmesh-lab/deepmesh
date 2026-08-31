@@ -3,8 +3,9 @@ kind: Ingress
 metadata:
   name: deepmesh-ingress
   namespace: deepmesh
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
+  # rewrite-target을 쓰지 않는다. path가 정규식 캡처 없는 Prefix라
+  # `rewrite-target: /`를 걸면 /api/auth/login 같은 요청이 백엔드에 `/`로 도착해
+  # 전 API가 깨진다. 캡처를 쓰려면 use-regex와 `/api/auth(/|$)(.*)` 형태가 함께 필요하다.
 spec:
   ingressClassName: nginx
   rules:

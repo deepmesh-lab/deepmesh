@@ -9,11 +9,12 @@ Proxy Container는 세 모듈로 이루어진다. 이 디렉터리는 그중 **T
 | 모듈 | 담당 | 상태 |
 |---|---|---|
 | Traffic Handler | 트래픽 가로채기, 세션 구성, 판정 집행 | 이 디렉터리 |
-| Traffic Converter | 세션 이미지(w×1479) 생성 | 별도 개발 |
-| Anomaly Detector | KD-CNN + OCSVM 판정 | 별도 개발 |
+| Traffic Converter | 세션 이미지(20×5) 생성 | `../detection/` |
+| Anomaly Detector | KD-CNN + OCSVM 판정 | `../detection/` |
 
-Traffic Converter와 Anomaly Detector가 붙기 전까지는 **탐지 없이 Forward 전용**으로
-동작한다. 프록시 경로가 트래픽을 깨뜨리지 않는지 먼저 확인할 수 있다.
+두 모듈은 `../detection/`에 vendoring돼 있고, `detection_binding.py`가 아래 규약에
+맞춰 잇는다. 다만 **사이드카 이미지에 아직 torch가 없어서 기본값은 여전히 탐지 없는
+Forward 전용**이다 — 배포 배선이 끝나야 실제로 판정한다.
 
 ## 동작
 
@@ -76,6 +77,7 @@ Converter가 세션을 나누는 기준과 같아야 하므로 어댑터에게�
 ```
 traffic_handler/
   adapter.py        ★ 탐지 모듈과의 유일한 접점
+  detection_binding.py  ../detection/ 을 그 접점에 맞추는 래퍼
   ports.py          SessionKey, Detection, Protocol 정의
   detection.py      탐지 경로 (Algorithm 1 line 1~8)
   packet_source.py  AF_PACKET 캡처
@@ -94,7 +96,8 @@ main.py             엔트리포인트
 ../iptables.sh        initContainer가 실행하는 리다이렉트 규칙 (data-plane/)
 ../Dockerfile         프록시 컨테이너 이미지 (data-plane/)
 ../requirements.txt   런타임 의존성 (data-plane/)
-../model/             배포용 학습 모델 (.pt/.pkl) — 시하님 산출물
+../detection/         vendoring한 Traffic Converter·Anomaly Detector (data-plane/)
+../model/             배포용 학습 모델 (.pt/.pkl). 저장소에 없고 PVC를 마운트한다
 ```
 
 ## 탐지 모듈 붙이기
@@ -131,6 +134,15 @@ class DetectionEngine:
 ```bash
 CONVERTER_FACTORY=모듈:팩토리  DETECTOR_FACTORY=모듈:팩토리    # 분리형
 DETECTION_ENGINE_FACTORY=모듈:팩토리                          # 융합형
+```
+
+`../detection/`의 모듈을 쓸 때는 이렇게 준다.
+
+```bash
+CONVERTER_FACTORY=traffic_handler.detection_binding:build_converter
+DETECTOR_FACTORY=traffic_handler.detection_binding:build_detector
+MODEL_ROOT=/app/model          # 가중치 PVC 마운트 지점
+DETECTION_SERVICE=auth         # 생략하면 SERVICE_NAME에서 "-service"를 뗀 값
 ```
 
 어댑터는 탐지 모듈의 예외를 흡수해 `None`으로 만든다. 탐지가 고장 나도 트래픽 중계는

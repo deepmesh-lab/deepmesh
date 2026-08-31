@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-backend
+  namespace: deepmesh
+spec:
+  # 1로 둔다. SSE 구독자는 붙은 인스턴스에만 브로드캐스트되므로, 여러 개로 늘리면
+  # 어느 인스턴스에 붙었는지에 따라 이벤트를 못 받는 클라이언트가 생긴다. 늘리려면
+  # 인스턴스 간 이벤트 전파(pub/sub)가 먼저 필요하다.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard-backend
+  template:
+    metadata:
+      labels:
+        app: dashboard-backend
+    spec:
+      # 토폴로지가 K8s API를 읽는다 (k8s/dashboard/rbac.yaml).
+      serviceAccountName: dashboard-backend-sa
+      containers:
+        - name: dashboard-backend
+          image: kimgooner/dashboard-backend:v1
+          # 태그를 v1으로 고정해 재사용하므로 기본값(IfNotPresent)이면 노드가 캐시된
+          # 옛 이미지를 계속 쓴다. 같은 태그로 다시 밀어도 반영되지 않는다.
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: deepmesh-config
+                  key: DASHBOARD_DB_URL
+            - name: SPRING_DATASOURCE_USERNAME
+              value: root
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: deepmesh-secret
+                  key: MYSQL_ROOT_PASSWORD
+            # Control Plane은 master 노드의 호스트 프로세스라 K8s 리소스로 잡히지 않는다.
+            # 이 주소로만 토폴로지의 control-plane 노드로 되돌릴 수 있다. configmap의
+            # CONTROL_PLANE_URL과 같은 곳을 가리켜야 한다.
+            - name: DEEPMESH_CONTROLPLANE_HOST
+              value: "192.168.56.10"
+          readinessProbe:
+            httpGet:
+              path: /dashboard/health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              # actuator를 쓰지 않는다. /dashboard/health는 DB·K8s 상태까지 보므로
+              # 일시적 의존성 장애로 컨테이너가 재시작되는 것을 피한다.
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 3

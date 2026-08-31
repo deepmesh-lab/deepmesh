@@ -1,0 +1,20 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:dashboard;DB_CLOSE_DELAY=-1;MODE=MySQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+deepmesh:
+  kubernetes:
+    # 테스트는 클러스터 없이 돈다. 토폴로지 테스트는 ClusterTopologySource 대역을 주입한다.
+    enabled: false

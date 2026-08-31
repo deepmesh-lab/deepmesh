@@ -10,10 +10,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends iptables libcap
 # 빌드 컨텍스트는 data-plane/ 이다. 런타임 의존성과 iptables 스크립트는 data-plane/ 에,
 # 프록시 코드는 proxy/ 하위에 있다.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# torch는 CPU 전용 휠을 받는다 (requirements.txt의 +cpu 핀과 짝). 기본 PyPI만 보면
+# 해당 버전을 찾지 못한다.
+RUN pip install --no-cache-dir \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    -r requirements.txt
 
 COPY proxy/ ./
+COPY detection/ ./detection/
 COPY iptables.sh ./
+
+# 모델 가중치는 이미지에 굽지 않는다. PVC를 MODEL_ROOT(기본 /app/model)에 마운트한다 —
+# 개선된 모델을 받았을 때 이미지 재빌드 없이 파일만 갈아 끼우기 위해서다.
 
 # iptables OUTPUT의 owner 매칭 대상 uid. iptables.sh의 PROXY_UID와 같아야 한다.
 # 이 uid로 '실행'하는 지정은 여기서 하지 않는다 — 같은 이미지를 initContainer가

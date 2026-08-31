@@ -53,6 +53,8 @@ class Detection:
 
     is_malicious: bool
     score: float = 0.0
+    # 이 판정을 만드는 데 걸린 모델 추론 시간(ms). 측정 전이면 0.0.
+    latency_ms: float = 0.0
 
 
 # 마지막 패킷의 방향 — Algorithm 1의 요청/응답 분기 기준
@@ -85,6 +87,10 @@ class SessionObservation:
     @property
     def score(self):
         return self.detection.score
+
+    @property
+    def latency_ms(self):
+        return self.detection.latency_ms
 
 
 @runtime_checkable
