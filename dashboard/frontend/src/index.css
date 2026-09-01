@@ -99,12 +99,6 @@ code,
   color: var(--code-text);
 }
 
-.top .scope {
-  font-family: var(--sans);
-  font-size: 11.5px;
-  color: var(--color-header-text-muted);
-}
-
 .top .sel {
   font-family: var(--sans);
   font-size: 11.5px;

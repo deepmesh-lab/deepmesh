@@ -47,7 +47,7 @@ function useClock() {
 }
 
 export function Masthead({ showTimeRange }: { showTimeRange: boolean }) {
-  const { namespace, timeRange, setTimeRange, connectionState, stalled } =
+  const { timeRange, setTimeRange, connectionState, stalled } =
     useDashboard()
   const { isMock, toggle } = useDataSource()
   const clock = useClock()
@@ -60,8 +60,6 @@ export function Masthead({ showTimeRange }: { showTimeRange: boolean }) {
       <NavLink to="/" className="brand">
         Deepmesh Monitoring System
       </NavLink>
-
-      <div className="scope">namespace={namespace}</div>
 
       {showTimeRange ? (
         <select
