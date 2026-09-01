@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 import { AlertToasts } from '../components/AlertToasts'
+import { ErrorBoundary } from '../components/ErrorBoundary'
 import { EventDetailDialog } from '../components/EventDetailDialog'
 import { ServiceDetailDialog } from '../components/ServiceDetailDialog'
 import { dashboardApi } from './client'
@@ -143,16 +144,25 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       {children}
 
       {/* 상세 대화상자와 토스트는 어느 페이지에서 열든 같은 자리에 뜬다 */}
-      <EventDetailDialog
-        eventId={selectedEventId}
-        onClose={() => setSelectedEventId(null)}
-      />
-      <ServiceDetailDialog
-        node={selectedNode}
-        timeRange={timeRange}
-        namespace={NAMESPACE}
-        onClose={() => setSelectedServiceId(null)}
-      />
+      {/*
+        경계는 대화상자 **바깥**에 둔다. 안쪽에 두면 잡히지 않는다 — props로 넘기는
+        값(KeyValue의 entries 등)은 대화상자 자신의 렌더에서 평가되므로 경계 입장에서는
+        자식이 아니라 부모에서 터진 예외이기 때문이다.
+      */}
+      <ErrorBoundary floating resetKey={selectedEventId}>
+        <EventDetailDialog
+          eventId={selectedEventId}
+          onClose={() => setSelectedEventId(null)}
+        />
+      </ErrorBoundary>
+      <ErrorBoundary floating resetKey={selectedServiceId}>
+        <ServiceDetailDialog
+          node={selectedNode}
+          timeRange={timeRange}
+          namespace={NAMESPACE}
+          onClose={() => setSelectedServiceId(null)}
+        />
+      </ErrorBoundary>
       <AlertToasts alerts={alerts} onSelect={openEvent} />
     </DashboardContext.Provider>
   )

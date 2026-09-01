@@ -10,6 +10,14 @@ type Props = {
   onClose: () => void
 }
 
+/**
+ * 백엔드가 아직 채우지 못한 수치는 null로 온다. 그대로 `.toFixed()`를 부르면 렌더가
+ * 죽으므로 null을 그대로 넘긴다 — KeyValue가 `null`로 표시한다.
+ */
+function fixed(value: number | null | undefined, digits: number) {
+  return value === null || value === undefined ? null : value.toFixed(digits)
+}
+
 export function EventDetailDialog({ eventId, onClose }: Props) {
   const [detail, setDetail] = useState<DetectionEventDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -79,10 +87,10 @@ export function EventDetailDialog({ eventId, onClose }: Props) {
                 ['protocol', detail.protocol],
                 ['peerServiceName', detail.peerServiceName],
                 ['modelVerdict', detail.modelVerdict],
-                ['ocsvmScore', detail.ocsvmScore.toFixed(4)],
+                ['ocsvmScore', fixed(detail.ocsvmScore, 4)],
                 ['verdict', detail.verdict],
                 ['category', detail.category],
-                ['detectionLatencyMs', detail.detectionLatencyMs.toFixed(2)],
+                ['detectionLatencyMs', fixed(detail.detectionLatencyMs, 2)],
                 ['windowSize', detail.windowSize],
                 ['modelId', detail.modelId],
               ]}
@@ -98,7 +106,12 @@ export function EventDetailDialog({ eventId, onClose }: Props) {
             <KeyValue
               entries={[
                 ['stage', detail.verification.stage],
-                ['passed', String(detail.verification.passed)],
+                [
+                  'passed',
+                  detail.verification.passed === null
+                    ? null
+                    : String(detail.verification.passed),
+                ],
                 [
                   'checkedPods',
                   detail.verification.checkedPods.length > 0 ? (
@@ -111,10 +124,12 @@ export function EventDetailDialog({ eventId, onClose }: Props) {
                     '—'
                   ),
                 ],
-                ['elapsedMs', detail.verification.elapsedMs.toFixed(1)],
+                ['elapsedMs', fixed(detail.verification.elapsedMs, 1)],
               ]}
             />
-            <div className="note">{detail.verification.detail}</div>
+            {detail.verification.detail ? (
+              <div className="note">{detail.verification.detail}</div>
+            ) : null}
             {detail.verification.checkedPods.length === 0 ? (
               <div className="note">
                 비교 가능한 replica가 없었습니다. 이 경우 판정 신뢰도가 낮습니다.
@@ -123,30 +138,39 @@ export function EventDetailDialog({ eventId, onClose }: Props) {
           </div>
 
           <div className="sect">
-            <h4>packets (windowSize {detail.windowSize})</h4>
-            <table className="pk">
-              <thead>
-                <tr>
-                  <th>seq</th>
-                  <th>capturedAt</th>
-                  <th>length</th>
-                  <th>flags</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detail.packets.map((packet) => (
-                  <tr key={packet.seq}>
-                    <td style={{ textAlign: 'left' }}>{packet.seq}</td>
-                    <td>{formatKstTime(packet.capturedAt)}</td>
-                    <td>{packet.length}</td>
-                    <td>{packet.flags}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="note">
-              페이로드 원문은 반환하지 않습니다. 메타데이터만 표시됩니다.
-            </div>
+            <h4>packets (windowSize {detail.windowSize ?? '—'})</h4>
+            {detail.packets && detail.packets.length > 0 ? (
+              <>
+                <table className="pk">
+                  <thead>
+                    <tr>
+                      <th>seq</th>
+                      <th>capturedAt</th>
+                      <th>length</th>
+                      <th>flags</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detail.packets.map((packet) => (
+                      <tr key={packet.seq}>
+                        <td style={{ textAlign: 'left' }}>{packet.seq}</td>
+                        <td>{formatKstTime(packet.capturedAt)}</td>
+                        <td>{packet.length}</td>
+                        <td>{packet.flags}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="note">
+                  페이로드 원문은 반환하지 않습니다. 메타데이터만 표시됩니다.
+                </div>
+              </>
+            ) : (
+              <div className="note">
+                패킷 메타데이터가 없습니다. 프록시가 <code>packets</code>를 함께 보내면
+                이 자리에 표시됩니다.
+              </div>
+            )}
           </div>
         </>
       ) : null}

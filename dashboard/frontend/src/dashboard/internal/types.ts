@@ -313,20 +313,28 @@ export type PacketMeta = {
   flags: string
 }
 
+/**
+ * null이 붙은 필드는 **실제로 지금 null로 온다.** 백엔드가 채우지 못해서다.
+ * (EventDetailResponse의 주석 참조 — 프록시·Traffic Converter 결합 시 채워진다)
+ * 값이 있다고 가정하고 `.toFixed()` 같은 것을 부르면 렌더가 통째로 죽는다.
+ */
 export type VerificationDetail = {
-  stage: VerificationStage
-  passed: boolean
+  /** 교차 검증이 돌지 않은 이벤트면 null. */
+  stage: VerificationStage | null
+  passed: boolean | null
   /** 비어 있으면 비교 가능한 replica가 없었다는 뜻이며 판정 신뢰도가 낮다. */
   checkedPods: string[]
-  detail: string
-  elapsedMs: number
+  detail: string | null
+  /** 프록시가 검증 왕복 시간을 보내기 전까지 백엔드가 null을 내려준다. */
+  elapsedMs: number | null
 }
 
 export type DetectionEventDetail = DetectionEvent & {
-  windowSize: number
-  modelId: string
+  /** windowSize·modelId·packets는 Traffic Converter 결합 전까지 null이다. */
+  windowSize: number | null
+  modelId: string | null
   /** 페이로드 원문은 반환하지 않는다. 메타데이터만. */
-  packets: PacketMeta[]
+  packets: PacketMeta[] | null
   verification: VerificationDetail
 }
 

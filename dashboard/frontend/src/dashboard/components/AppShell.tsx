@@ -4,6 +4,7 @@ import { useDashboard } from '../internal/DashboardProvider'
 import { useDataSource } from '../internal/hooks/useDataSource'
 import { Masthead } from './Masthead'
 import { HealthBanner, StaleBanner } from './Banners'
+import { ErrorBoundary } from './ErrorBoundary'
 
 type NavItem = {
   to: string
@@ -147,7 +148,10 @@ export function AppShell() {
         </nav>
 
         <main className="main">
-          <Outlet />
+          {/* 페이지 하나가 렌더 중 죽어도 좌측 메뉴로 다른 화면에 갈 수 있어야 한다. */}
+          <ErrorBoundary resetKey={pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>

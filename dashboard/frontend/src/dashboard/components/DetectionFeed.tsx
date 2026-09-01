@@ -20,7 +20,7 @@ export function DetectionFeed({
       {omittedCount > 0 ? (
         <div className="omitted">
           <span>{omittedCount.toLocaleString()}건이 생략되었습니다.</span>
-          <Link to="/events">전체 이력 보기</Link>
+          <Link to="/logs">전체 이력 보기</Link>
         </div>
       ) : null}
 
