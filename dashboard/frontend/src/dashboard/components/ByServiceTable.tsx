@@ -20,11 +20,11 @@ export function ByServiceTable({ data, onSelect }: Props) {
     <table>
       <thead>
         <tr>
-          <th>serviceName</th>
-          <th>total</th>
-          <th>cleared</th>
-          <th>drop</th>
-          <th>relay</th>
+          <th>서비스</th>
+          <th>전체</th>
+          <th>교차 검증 통과</th>
+          <th>차단</th>
+          <th>응답 대체</th>
         </tr>
       </thead>
       <tbody>

@@ -11,9 +11,9 @@ export function StaleBanner({
     // 연결은 살아 있는데 stats 틱이 끊긴 경우. (명세 2-2)
     return stalled && state === 'CONNECTED' ? (
       <div className="stale warn">
-        연결은 유지되고 있으나 <code>stats</code> 이벤트가 3초 넘게 도착하지 않았습니다.
-        화면의 수치가 실제보다 오래되었을 수 있습니다 — 백엔드 발행 중단이나 중간 프록시
-        버퍼링을 확인해 주세요.
+        연결은 유지되고 있으나 집계 갱신이 3초 넘게 도착하지 않았습니다. 화면의 수치가
+        실제보다 오래되었을 수 있습니다 — 백엔드 상태나 중간 프록시의 버퍼링을 확인해
+        주세요.
       </div>
     ) : null
   }
@@ -29,8 +29,8 @@ export function StaleBanner({
 
   return (
     <div className="stale">
-      재연결 중입니다. 화면의 수치는 최신이 아닙니다. <code>EventSource</code>가 자동
-      재연결하며 <code>Last-Event-ID</code>로 누락 구간이 복구됩니다.
+      재연결 중입니다. 화면의 수치는 최신이 아닙니다. 연결이 자동으로 복구되며, 끊긴
+      사이에 놓친 이벤트도 함께 받아옵니다.
     </div>
   )
 }
@@ -51,8 +51,7 @@ export function HealthBanner({
   if (unreachable) {
     return (
       <div className="stale">
-        헬스 체크에 응답이 없습니다. 대시보드 백엔드 상태를 확인해 주세요. (
-        <code>GET /dashboard/health</code>)
+        헬스 체크에 응답이 없습니다. 대시보드 백엔드 상태를 확인해 주세요.
       </div>
     )
   }
@@ -84,9 +83,8 @@ export function HealthBanner({
       {restarted ? (
         <>
           {degraded ? ' ' : ''}
-          백엔드가 재시작되었습니다(<code>uptimeSeconds</code> 되감김). 단절 구간의
-          이벤트는 <code>Last-Event-ID</code>로 복구되지만, 누락이 의심되면 이력 조회로
-          대조해 주세요.
+          백엔드가 재시작되었습니다. 단절 구간의 이벤트는 자동으로 복구되지만, 누락이
+          의심되면 이력 조회로 대조해 주세요.
         </>
       ) : null}
     </div>

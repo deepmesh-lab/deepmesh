@@ -160,7 +160,7 @@ export function PlainNode({ data }: NodeProps<PlainFlowNode>) {
         <KindGlyph kind={node.kind} />
       </span>
       <span className="name">{node.serviceName}</span>
-      <span className="meta">unmonitored</span>
+      <span className="meta">미감시</span>
       <Handle type="source" position={Position.Right} />
     </div>
   )

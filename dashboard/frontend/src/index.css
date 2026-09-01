@@ -1779,6 +1779,15 @@ td:first-child {
   align-items: flex-end;
 }
 
+/* 필터 버튼 묶음. 필드가 한 줄에 다 들어가면 오른쪽 끝에 붙고,
+   줄바꿈이 일어나도 두 버튼은 절대 갈라지지 않는다. */
+.filter-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  align-items: center;
+}
+
 .field {
   display: grid;
   gap: 4px;

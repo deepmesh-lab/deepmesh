@@ -12,9 +12,8 @@ export function ServicesPage() {
       <section className="panel">
         <div className="ph">
           <h2>서비스별 판정 분포</h2>
-          <span className="api">GET /dashboard/stats/by-service</span>
           <div className="tools">
-            <span className="ep">blockRate 내림차순</span>
+            <span className="ep">차단률 높은 순</span>
           </div>
         </div>
         <div className="pb">
@@ -25,7 +24,6 @@ export function ServicesPage() {
       <section className="panel">
         <div className="ph">
           <h2>프록시 미부착 노드</h2>
-          <span className="api">counts: null</span>
         </div>
         <div className="pb">
           {unmonitored.length === 0 ? (
@@ -34,9 +32,9 @@ export function ServicesPage() {
             <table>
               <thead>
                 <tr>
-                  <th>serviceName</th>
-                  <th style={{ textAlign: 'left' }}>kind</th>
-                  <th style={{ textAlign: 'left' }}>status</th>
+                  <th>서비스</th>
+                  <th style={{ textAlign: 'left' }}>종류</th>
+                  <th style={{ textAlign: 'left' }}>상태</th>
                 </tr>
               </thead>
               <tbody>

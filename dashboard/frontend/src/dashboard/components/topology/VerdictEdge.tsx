@@ -34,10 +34,10 @@ export type VerdictFlowEdge = Edge<VerdictEdgeData, 'verdict'>
 
 const KIND_LABEL: Record<EdgeKind, string> = {
   idle: '경로만 존재 (집계 구간 내 트래픽 없음)',
-  forward: 'BENIGN (정상 전달)',
-  cleared: 'CLEARED (교차 검증 통과)',
-  drop: 'DROP (요청 차단)',
-  relay: 'RELAY (응답 대체)',
+  forward: '정상 전달 (forward)',
+  cleared: '교차 검증 통과 (cleared)',
+  drop: '요청 차단 (drop)',
+  relay: '응답 대체 (relay)',
 }
 
 export function VerdictEdge({
@@ -131,19 +131,19 @@ export function VerdictEdge({
             </div>
             <div className="tip-kind">{KIND_LABEL[kind]}</div>
             <dl className="tip-counts">
-              <dt>benign</dt>
+              <dt>정상</dt>
               <dd>{edge.counts.benign.toLocaleString()}</dd>
-              <dt>cleared</dt>
+              <dt>교차 검증 통과</dt>
               <dd>{edge.counts.cleared.toLocaleString()}</dd>
-              <dt>drop</dt>
+              <dt>차단</dt>
               <dd>{edge.counts.drop.toLocaleString()}</dd>
-              <dt>relay</dt>
+              <dt>응답 대체</dt>
               <dd>{edge.counts.relay.toLocaleString()}</dd>
-              <dt>total</dt>
+              <dt>전체</dt>
               <dd>{edge.total.toLocaleString()}</dd>
             </dl>
             <div className="tip-foot">
-              lastVerdict {edge.lastVerdict}, {formatKstTime(edge.lastEventAt)}
+              마지막 판정 {edge.lastVerdict} · {formatKstTime(edge.lastEventAt)}
               {data?.inspectable ? (
                 <>
                   <br />

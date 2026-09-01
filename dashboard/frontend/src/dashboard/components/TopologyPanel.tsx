@@ -13,7 +13,6 @@ export function TopologyPanel({ className = '' }: { className?: string }) {
     <section className={`panel ${className}`}>
       <div className="ph">
         <h2>서비스 토폴로지</h2>
-        <span className="api">GET /dashboard/topology</span>
         <ScenarioControls />
       </div>
 
@@ -30,19 +29,19 @@ export function TopologyPanel({ className = '' }: { className?: string }) {
       <div className="legend">
         <span>
           <i style={{ background: 'var(--verdict-benign)' }} />
-          benign
+          정상 (forward)
         </span>
         <span>
           <i style={{ background: 'var(--verdict-cleared)' }} />
-          cleared (교차 검증 통과)
+          교차 검증 통과 (cleared)
         </span>
         <span>
           <i style={{ background: 'var(--verdict-drop)' }} />
-          drop
+          차단 (drop)
         </span>
         <span>
           <i style={{ background: 'var(--verdict-relay)' }} />
-          relay
+          응답 대체 (relay)
         </span>
         <span style={{ color: 'var(--color-text-subtle)' }}>
           <i className="dash" />

@@ -86,7 +86,7 @@ export function ServiceDetailDialog({
           <div className="modal-body">
             {!monitored ? (
               <div className="sect">
-                <h4>topology node</h4>
+                <h4>토폴로지 노드</h4>
                 <KeyValue
                   entries={[
                     ['id', node.id],
@@ -115,9 +115,7 @@ export function ServiceDetailDialog({
             {detail ? (
               <>
                 <div className="sect">
-                  <h4 className="api">
-                    GET /dashboard/topology/services/{detail.serviceName}
-                  </h4>
+                  <h4>서비스 개요</h4>
                   <KeyValue
                     entries={[
                       ['namespace', detail.namespace],

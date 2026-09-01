@@ -55,11 +55,18 @@ export function LogsPage() {
     setSearchParams(next, { replace: true })
   }
 
+  /**
+   * 필터를 걸지 않으면 서버는 전체를 준다. 그 상태를 "셋 다 선택"으로 보여준다 —
+   * 아무것도 안 눌린 화면은 "아무것도 안 나온다"로 오해된다.
+   */
+  const activeVerdicts = verdicts.length > 0 ? verdicts : VERDICTS
+
   function toggleVerdict(verdict: Verdict) {
-    const next = verdicts.includes(verdict)
-      ? verdicts.filter((value) => value !== verdict)
-      : [...verdicts, verdict]
-    update('verdict', next.join(','))
+    const next = activeVerdicts.includes(verdict)
+      ? activeVerdicts.filter((value) => value !== verdict)
+      : [...activeVerdicts, verdict]
+    // 셋 다 선택이면 파라미터를 비워 '전체'로 되돌린다. URL이 짧아지고 의미도 같다.
+    update('verdict', next.length === VERDICTS.length ? '' : next.join(','))
   }
 
   return (
@@ -68,7 +75,6 @@ export function LogsPage() {
         <section className="panel">
           <div className="ph">
             <h2>탐지 이벤트 이력</h2>
-            <span className="api">GET /dashboard/events</span>
             <div className="tools">
               <span className="ep">{history.items.length}건 표시 중</span>
             </div>
@@ -77,13 +83,13 @@ export function LogsPage() {
           <div className="pb">
             <div className="filters">
               <div className="field">
-                <label>verdict</label>
+                <label>판정</label>
                 <div className="chips">
                   {VERDICTS.map((verdict) => (
                     <button
                       type="button"
                       key={verdict}
-                      className={`btn ${verdicts.includes(verdict) ? 'active' : ''}`}
+                      className={`btn ${activeVerdicts.includes(verdict) ? 'active' : ''}`}
                       onClick={() => toggleVerdict(verdict)}
                     >
                       {verdict}
@@ -93,27 +99,25 @@ export function LogsPage() {
               </div>
 
               <div className="field">
-                <label htmlFor="serviceName">serviceName</label>
+                <label htmlFor="serviceName">서비스</label>
                 <input
                   id="serviceName"
                   value={serviceName}
-                  placeholder="post"
                   onChange={(event) => update('serviceName', event.target.value)}
                 />
               </div>
 
               <div className="field">
-                <label htmlFor="podName">podName</label>
+                <label htmlFor="podName">Pod 이름</label>
                 <input
                   id="podName"
                   value={podName}
-                  placeholder="post-6d4f8b9c7d-a1b2c"
                   onChange={(event) => update('podName', event.target.value)}
                 />
               </div>
 
               <div className="field">
-                <label htmlFor="direction">direction</label>
+                <label htmlFor="direction">방향</label>
                 <select
                   id="direction"
                   value={direction}
@@ -126,7 +130,7 @@ export function LogsPage() {
               </div>
 
               <div className="field">
-                <label htmlFor="from">from</label>
+                <label htmlFor="from">시작</label>
                 <input
                   id="from"
                   type="datetime-local"
@@ -143,7 +147,7 @@ export function LogsPage() {
               </div>
 
               <div className="field">
-                <label htmlFor="to">to</label>
+                <label htmlFor="to">종료</label>
                 <input
                   id="to"
                   type="datetime-local"
@@ -159,29 +163,33 @@ export function LogsPage() {
                 />
               </div>
 
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setSearchParams(new URLSearchParams(), { replace: true })}
-              >
-                필터 초기화
-              </button>
+              <div className="filter-actions">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() =>
+                    setSearchParams(new URLSearchParams(), { replace: true })
+                  }
+                >
+                  필터 초기화
+                </button>
 
-              <button
-                type="button"
-                className="btn"
-                disabled={isMock}
-                title={
-                  isMock
-                    ? '실제 백엔드에서만 내려받을 수 있습니다.'
-                    : '현재 필터에 해당하는 전체를 CSV로 내려받습니다.'
-                }
-                onClick={() => {
-                  window.location.href = eventsExportUrl(params)
-                }}
-              >
-                CSV 내려받기
-              </button>
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={isMock}
+                  title={
+                    isMock
+                      ? '실제 백엔드에서만 내려받을 수 있습니다.'
+                      : '현재 필터에 해당하는 전체를 CSV로 내려받습니다.'
+                  }
+                  onClick={() => {
+                    window.location.href = eventsExportUrl(params)
+                  }}
+                >
+                  CSV 내려받기
+                </button>
+              </div>
             </div>
           </div>
 
@@ -203,13 +211,13 @@ export function LogsPage() {
               <table className="history">
                 <thead>
                   <tr>
-                    <th>occurredAt</th>
-                    <th style={{ textAlign: 'left' }}>verdict</th>
-                    <th style={{ textAlign: 'left' }}>service → peer</th>
-                    <th style={{ textAlign: 'left' }}>podName</th>
-                    <th style={{ textAlign: 'left' }}>direction</th>
-                    <th>ocsvmScore</th>
-                    <th>latencyMs</th>
+                    <th>발생 시각</th>
+                    <th style={{ textAlign: 'left' }}>판정</th>
+                    <th style={{ textAlign: 'left' }}>서비스 → 상대</th>
+                    <th style={{ textAlign: 'left' }}>Pod 이름</th>
+                    <th style={{ textAlign: 'left' }}>방향</th>
+                    <th>이상 점수</th>
+                    <th>추론 지연(ms)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -261,9 +269,9 @@ export function LogsPage() {
         </section>
 
         <p className="foot">
-          정렬은 <code>eventId DESC</code> 고정이며 커서 방식으로 페이지를 넘깁니다. 실시간
-          유입 중 offset을 쓰면 페이지 이동 사이에 신규 이벤트가 앞에 삽입되어 중복·누락이
-          발생합니다.
+          항상 최신순으로 정렬되며, 페이지는 마지막으로 본 지점을 이어받는 방식으로
+          넘어갑니다. 이벤트가 실시간으로 쌓이는 중에도 같은 건이 두 번 보이거나 빠지지
+          않습니다.
         </p>
       </div>
 

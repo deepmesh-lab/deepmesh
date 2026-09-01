@@ -13,10 +13,10 @@ import type {
  * 교차 검증 통과가 트래픽의 정상성을 보증하지는 않는다.
  */
 export const VERDICT_LABEL: Record<VerdictCategory, string> = {
-  benign: '정상 전달',
-  cleared: '교차 검증 통과',
-  drop: '요청 차단',
-  relay: '응답 대체',
+  benign: '정상 전달 (forward)',
+  cleared: '교차 검증 통과 (cleared)',
+  drop: '요청 차단 (drop)',
+  relay: '응답 대체 (relay)',
 }
 
 export function emptyCounts(): VerdictCounts {

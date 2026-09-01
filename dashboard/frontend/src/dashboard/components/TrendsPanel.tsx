@@ -54,9 +54,6 @@ export function TrendsPanel({ metric, height = 200 }: Props) {
     <section className="panel">
       <div className="ph">
         <h2>{METRIC_TITLE[metric]}</h2>
-        <span className="api">
-          GET /dashboard/stats/timeseries?metric={metric}&amp;interval={interval}
-        </span>
       </div>
       <div className="pb" style={{ padding: '12px 16px 8px' }}>
         <VerdictTimeseriesChart data={timeseries.data} height={height} />

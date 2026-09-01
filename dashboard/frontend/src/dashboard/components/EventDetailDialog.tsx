@@ -65,7 +65,7 @@ export function EventDetailDialog({ eventId, onClose }: Props) {
       {detail ? (
         <>
           <div className="sect">
-            <h4 className="api">GET /dashboard/events/{detail.eventId}</h4>
+            <h4>탐지 이벤트</h4>
             <KeyValue
               entries={[
                 ['eventId', detail.eventId],
@@ -95,7 +95,7 @@ export function EventDetailDialog({ eventId, onClose }: Props) {
           </div>
 
           <div className="sect">
-            <h4>verification</h4>
+            <h4>교차 검증</h4>
             <KeyValue
               entries={[
                 ['stage', detail.verification.stage],
@@ -131,16 +131,16 @@ export function EventDetailDialog({ eventId, onClose }: Props) {
           </div>
 
           <div className="sect">
-            <h4>packets (windowSize {detail.windowSize ?? '—'})</h4>
+            <h4>패킷 메타데이터 (윈도우 {detail.windowSize ?? '—'}개)</h4>
             {detail.packets && detail.packets.length > 0 ? (
               <>
                 <table className="pk">
                   <thead>
                     <tr>
-                      <th>seq</th>
-                      <th>capturedAt</th>
-                      <th>length</th>
-                      <th>flags</th>
+                      <th>순번</th>
+                      <th>캡처 시각</th>
+                      <th>길이</th>
+                      <th>플래그</th>
                     </tr>
                   </thead>
                   <tbody>
