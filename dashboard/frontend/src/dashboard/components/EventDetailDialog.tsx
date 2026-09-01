@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getErrorMessage } from '../../api/restClient'
 import { dashboardApi } from '../internal/client'
+import { fixed } from '../internal/format'
 import { formatKstTime } from '../internal/time'
 import type { DetectionEventDetail } from '../internal/types'
 import { KeyValue, Modal, ModalHeader } from './Modal'
@@ -8,14 +9,6 @@ import { KeyValue, Modal, ModalHeader } from './Modal'
 type Props = {
   eventId: string | null
   onClose: () => void
-}
-
-/**
- * 백엔드가 아직 채우지 못한 수치는 null로 온다. 그대로 `.toFixed()`를 부르면 렌더가
- * 죽으므로 null을 그대로 넘긴다 — KeyValue가 `null`로 표시한다.
- */
-function fixed(value: number | null | undefined, digits: number) {
-  return value === null || value === undefined ? null : value.toFixed(digits)
 }
 
 export function EventDetailDialog({ eventId, onClose }: Props) {

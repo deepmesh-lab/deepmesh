@@ -61,7 +61,7 @@ docker push uicheolshin/dashboard-frontend:latest
 아무 효과가 없다. 반대로 백엔드 주소(`VITE_DASHBOARD_API_URL`)는 비워 둬야 앱이
 같은 오리진으로만 요청하고, 주소 변경이 ConfigMap 한 곳으로 끝난다.
 
-두 Deployment 모두 `imagePullPolicy: Always`다. 같은 태그(`:latest`, 백엔드는 `:v1`)를
+두 Deployment 모두 `imagePullPolicy: Always`다. 같은 태그(`:latest`, 백엔드는 `:v2`)를
 재사용하므로 이 설정이 없으면 노드가 캐시된 옛 이미지를 계속 쓴다. 반대로 말하면
 push를 빠뜨린 채 rollout만 돌리면 바뀐 게 없다.
 

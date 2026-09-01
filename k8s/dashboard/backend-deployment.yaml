@@ -20,8 +20,8 @@ spec:
       serviceAccountName: dashboard-backend-sa
       containers:
         - name: dashboard-backend
-          image: kimgooner/dashboard-backend:v1
-          # 태그를 v1으로 고정해 재사용하므로 기본값(IfNotPresent)이면 노드가 캐시된
+          image: uicheolshin/dashboard-backend:v2
+          # 버전 태그를 고정해 재사용하므로 기본값(IfNotPresent)이면 노드가 캐시된
           # 옛 이미지를 계속 쓴다. 같은 태그로 다시 밀어도 반영되지 않는다.
           imagePullPolicy: Always
           ports:

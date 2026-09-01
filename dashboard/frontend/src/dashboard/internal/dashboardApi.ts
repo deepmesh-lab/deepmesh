@@ -95,3 +95,34 @@ export const realDashboardApi: DashboardApi = {
     return requestRestApi<HealthResponse>(dashboardUrl('/health'))
   },
 }
+
+/**
+ * 현재 필터를 그대로 붙인 CSV 내려받기 주소.
+ *
+ * 브라우저를 이 주소로 보내면 Content-Disposition이 attachment라 화면은 그대로 있고
+ * 파일만 받아진다. 진행 표시와 취소는 브라우저 다운로드 관리자가 맡는다.
+ *
+ * 전체 내려받기이므로 cursor·afterId·size는 넘기지 않는다. 빈 값을 빼는 규칙은
+ * restClient의 buildUrl과 같아야 한다 — 어긋나면 필터가 조용히 무시된다.
+ */
+export function eventsExportUrl(params: EventListParams = {}) {
+  const query = new URLSearchParams()
+  const entries: [string, string | undefined][] = [
+    ['verdict', params.verdict],
+    ['serviceName', params.serviceName],
+    ['podName', params.podName],
+    ['direction', params.direction],
+    ['from', params.from],
+    ['to', params.to],
+  ]
+
+  entries.forEach(([key, value]) => {
+    if (value !== undefined && value !== '') {
+      query.set(key, value)
+    }
+  })
+
+  const search = query.toString()
+  const url = dashboardUrl('/events/export')
+  return search ? `${url}?${search}` : url
+}

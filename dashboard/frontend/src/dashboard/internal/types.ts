@@ -272,13 +272,19 @@ export type DetectionEvent = {
   peerServiceName: string | null
   /** 이 API는 ATTACK만 반환한다. */
   modelVerdict: 'ATTACK'
-  /** OCSVM decision_function() 원값. 음수가 ATTACK. */
-  ocsvmScore: number
+  /**
+   * OCSVM decision_function() 원값. 음수가 ATTACK.
+   *
+   * 백엔드 컬럼에 not-null 제약이 없어 비어 있을 수 있다. 값이 있다고 가정하고
+   * `.toFixed()`를 부르면 렌더가 통째로 죽는다.
+   */
+  ocsvmScore: number | null
   verdict: Verdict
   category: Exclude<VerdictCategory, 'benign'>
   verificationStage: VerificationStage
   verificationPassed: boolean
-  detectionLatencyMs: number
+  /** 나중에 추가된 필드라 그 이전에 쌓인 행에는 값이 없다. */
+  detectionLatencyMs: number | null
   summary: string
 }
 

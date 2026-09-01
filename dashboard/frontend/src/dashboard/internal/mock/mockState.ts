@@ -359,7 +359,9 @@ export function recordDetection(event: DetectionEventDetail, edgeId: string) {
   const bucket = currentBucket()
   addTo(bucket.byService, event.serviceName, event.category, 1)
   addTo(bucket.byEdge, edgeId, event.category, 1)
-  bucket.latency.push(event.detectionLatencyMs)
+  if (event.detectionLatencyMs !== null) {
+    bucket.latency.push(event.detectionLatencyMs)
+  }
 
   const edge = store.edges.get(edgeId)
   if (edge) {

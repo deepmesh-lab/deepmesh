@@ -1,6 +1,9 @@
 import { useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useDashboard } from '../internal/DashboardProvider'
+import { eventsExportUrl } from '../internal/dashboardApi'
+import { fixed } from '../internal/format'
+import { useDataSource } from '../internal/hooks/useDataSource'
 import { useEventHistory } from '../internal/hooks/useEventHistory'
 import {
   formatKstDateTime,
@@ -17,6 +20,7 @@ const VERDICTS: Verdict[] = ['FORWARD', 'DROP', 'RELAY']
 export function LogsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { openEvent } = useDashboard()
+  const { isMock } = useDataSource()
 
   const verdicts = (searchParams.get('verdict') ?? '')
     .split(',')
@@ -162,6 +166,22 @@ export function LogsPage() {
               >
                 필터 초기화
               </button>
+
+              <button
+                type="button"
+                className="btn"
+                disabled={isMock}
+                title={
+                  isMock
+                    ? '실제 백엔드에서만 내려받을 수 있습니다.'
+                    : '현재 필터에 해당하는 전체를 CSV로 내려받습니다.'
+                }
+                onClick={() => {
+                  window.location.href = eventsExportUrl(params)
+                }}
+              >
+                CSV 내려받기
+              </button>
             </div>
           </div>
 
@@ -213,8 +233,8 @@ export function LogsPage() {
                       </td>
                       <td style={{ textAlign: 'left' }}>{event.podName}</td>
                       <td style={{ textAlign: 'left' }}>{event.direction}</td>
-                      <td>{event.ocsvmScore.toFixed(4)}</td>
-                      <td>{event.detectionLatencyMs.toFixed(2)}</td>
+                      <td>{fixed(event.ocsvmScore, 4) ?? '—'}</td>
+                      <td>{fixed(event.detectionLatencyMs, 2) ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>
