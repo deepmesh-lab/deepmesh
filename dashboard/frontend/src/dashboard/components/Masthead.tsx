@@ -4,13 +4,31 @@ import { useDashboard } from '../internal/DashboardProvider'
 import { useDataSource } from '../internal/hooks/useDataSource'
 import { formatKstStamp, nowKstIso } from '../internal/time'
 import { TOPOLOGY_TIME_RANGES } from '../internal/types'
-import type { ConnectionState, TopologyTimeRange } from '../internal/types'
+import type {
+  ConnectionState,
+  TimeRange,
+  TopologyTimeRange,
+} from '../internal/types'
 
 const CONNECTION_LABEL: Record<ConnectionState, string> = {
   CONNECTING: '연결 중',
   CONNECTED: 'Live (SSE)',
   RECONNECTING: '재연결 중',
   DISCONNECTED: '연결 끊김',
+}
+
+/**
+ * 집계 구간은 `[지금 - 구간, 지금)`이라 "최근"이 그 의미를 그대로 옮긴다.
+ *
+ * 다섯 값을 모두 적어 둔다 — 지금 드롭다운은 토폴로지용 넷만 쓰지만, 요약·서비스별이
+ * 쓰는 24h가 여기 들어와도 라벨이 비지 않는다.
+ */
+const TIME_RANGE_LABEL: Record<TimeRange, string> = {
+  '1m': '최근 1분',
+  '5m': '최근 5분',
+  '15m': '최근 15분',
+  '1h': '최근 1시간',
+  '24h': '최근 24시간',
 }
 
 /** `2026-08-16 01:41:29` — 연·월·일까지 붙는다. 명세상 모든 시각은 KST다. */
@@ -56,7 +74,7 @@ export function Masthead({ showTimeRange }: { showTimeRange: boolean }) {
         >
           {TOPOLOGY_TIME_RANGES.map((range) => (
             <option value={range} key={range}>
-              timeRange={range}
+              {TIME_RANGE_LABEL[range]}
             </option>
           ))}
         </select>
