@@ -5,6 +5,7 @@ import type {
   NodeStatus,
   TopologyNode,
   VerdictCategory,
+  TopologyEdge,
   VerdictCounts,
 } from './types'
 
@@ -17,6 +18,49 @@ export const VERDICT_LABEL: Record<VerdictCategory, string> = {
   cleared: '교차 검증 통과 (cleared)',
   drop: '요청 차단 (drop)',
   relay: '응답 대체 (relay)',
+}
+
+/**
+ * 토폴로지 노드 ID. 백엔드 NodeIds.of와 같은 규칙으로 `-service` 접미사를 뗀다.
+ * 어긋나면 이벤트에서 간선을 찾지 못한다.
+ */
+export function nodeIdOf(serviceName: string): string {
+  return serviceName.endsWith('-service')
+    ? serviceName.slice(0, -'-service'.length)
+    : serviceName
+}
+
+/**
+ * 이벤트가 그려진 간선의 키(`간선ID#category`). 없으면 null.
+ *
+ * 키를 문자열로 조립하지 않고 **실제 간선 목록에서 찾는다**. 응답 이벤트는 관측자가
+ * 응답한 쪽이라 간선 방향이 호출 방향과 반대다(post가 관측한 응답의 상대는 frontend지만
+ * 간선은 frontend->post다). 양방향을 모두 보고 해당 판정이 실제로 집계된 쪽을 고른다.
+ */
+export function edgeKeyOfEvent(
+  event: {
+    serviceName: string
+    peerServiceName: string | null
+    category: VerdictCategory
+  },
+  edges: TopologyEdge[],
+): string | null {
+  if (!event.peerServiceName) {
+    return null
+  }
+
+  const self = nodeIdOf(event.serviceName)
+  const peer = event.peerServiceName
+  const match = (source: string, target: string) =>
+    edges.find(
+      (edge) =>
+        edge.source === source &&
+        edge.target === target &&
+        edge.counts[event.category] > 0,
+    )
+
+  const edge = match(self, peer) ?? match(peer, self)
+  return edge ? `${edge.id}#${event.category}` : null
 }
 
 export function emptyCounts(): VerdictCounts {

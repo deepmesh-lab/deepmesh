@@ -138,6 +138,60 @@ type TopologyGraphProps = {
   /** 값이 바뀌면 사용자가 옮긴 위치를 버리고 다시 배치한다 */
   relayoutToken: number
   onSelectService: (serviceName: string) => void
+  /**
+   * 펼쳐 놓은 간선. 페이지마다 따로 들고 있어서 서로 영향을 주지 않는다.
+   * 개요는 탐지 피드와 공유해야 하므로 컨텍스트 값을, 그래프 페이지는 자기 상태를 넘긴다.
+   */
+  selectedEdgeKey: string | null
+  onSelectEdge: (key: string | null) => void
+  /** 그래프에서 지운 간선. 그래프 페이지는 빈 집합을 넘겨 항상 전부 보여준다. */
+  hiddenEdgeKeys: ReadonlySet<string>
+  /** 없으면 삭제 버튼을 그리지 않는다. 되살릴 로그 목록이 없는 화면에서는 넘기지 않는다. */
+  onHideEdge?: (key: string) => void
+}
+
+/** forward 간선이 나타났다 사라지는 시간. 눈에 띄되 잔상이 남지 않는 길이. */
+const PULSE_MS = 1200
+
+/**
+ * 직전 갱신보다 benign이 늘어난 간선을 잠깐 기억한다.
+ *
+ * 집계 카운트는 "구간 안에 있었다"만 알려주므로 그것만으로는 상시 켜진 선이 된다.
+ * 증가분을 봐야 "방금 흘렀다"를 알 수 있다.
+ */
+function useBenignPulse(edges: TopologyEdge[]): Set<string> {
+  const previousRef = useRef<Map<string, number>>(new Map())
+  const [pulsing, setPulsing] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    const previous = previousRef.current
+    const fired: string[] = []
+
+    edges.forEach((edge) => {
+      const before = previous.get(edge.id)
+      if (before !== undefined && edge.counts.benign > before) {
+        fired.push(edge.id)
+      }
+    })
+    previousRef.current = new Map(edges.map((e) => [e.id, e.counts.benign]))
+
+    if (fired.length === 0) {
+      return
+    }
+
+    setPulsing((current) => new Set([...current, ...fired]))
+    const timer = window.setTimeout(() => {
+      setPulsing((current) => {
+        const next = new Set(current)
+        fired.forEach((id) => next.delete(id))
+        return next
+      })
+    }, PULSE_MS)
+
+    return () => window.clearTimeout(timer)
+  }, [edges])
+
+  return pulsing
 }
 
 export function TopologyGraph({
@@ -148,8 +202,12 @@ export function TopologyGraph({
   showGrid,
   relayoutToken,
   onSelectService,
+  selectedEdgeKey: selectedEdgeId,
+  onSelectEdge: selectEdge,
+  hiddenEdgeKeys,
+  onHideEdge,
 }: TopologyGraphProps) {
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
+  const pulsingEdgeIds = useBenignPulse(edges)
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<Node>([])
   const shapeRef = useRef('')
   const relayoutRef = useRef(relayoutToken)
@@ -293,7 +351,10 @@ export function TopologyGraph({
         ? BIDIRECTIONAL_OFFSET
         : 0
       const kinds: EdgeKind[] = []
-      if (edge.counts.benign > 0) {
+      // forward(정상)는 상시 표시하지 않는다. 끊이지 않는 트래픽이라 늘 켜져 있으면
+      // 무엇이 지금 일어났는지 알 수 없다. 직전 갱신보다 benign이 늘었을 때만
+      // 잠깐 나타났다 사라진다.
+      if (pulsingEdgeIds.has(edge.id)) {
         kinds.push('forward')
       }
       if (edge.counts.cleared > 0) {
@@ -311,6 +372,11 @@ export function TopologyGraph({
       }
 
       kinds.forEach((kind) => {
+        // 사용자가 삭제한 판정 간선은 그리지 않는다. 로그에는 남아 있고, 탐지 이벤트를
+        // 눌러 다시 불러올 수 있다.
+        if (hiddenEdgeKeys.has(`${edge.id}#${kind}`)) {
+          return
+        }
         const flowEdge: VerdictFlowEdge = {
           id: `${edge.id}#${kind}`,
           type: 'verdict',
@@ -330,7 +396,7 @@ export function TopologyGraph({
     })
 
     return built
-  }, [edges, addedEdgeIds, selectedEdgeId])
+  }, [edges, addedEdgeIds, selectedEdgeId, pulsingEdgeIds, hiddenEdgeKeys])
 
   // 선택된 판정 간선의 검증 절차를 그린다. 평소에는 아무것도 그리지 않는다.
   const verifyPlan = useMemo<VerifyPlan | null>(() => {
@@ -480,12 +546,8 @@ export function TopologyGraph({
         }}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        onEdgeClick={(_event, edge) => {
-          setSelectedEdgeId((current) =>
-            current === edge.id ? null : (edge.id as string),
-          )
-        }}
-        onPaneClick={() => setSelectedEdgeId(null)}
+        onEdgeClick={(_event, edge) => selectEdge(edge.id as string)}
+        onPaneClick={() => selectEdge(null)}
         onNodeClick={(_event, node) => {
           const serviceName =
             node.type === 'pod'
@@ -510,8 +572,20 @@ export function TopologyGraph({
       {verifyPlan ? (
         <div className={`verify-plan ${verifyPlan.tone}`}>
           <div className="verify-plan-head">
-            <span className="verify-plan-title">교차 검증 절차</span>
-            <span className="verify-plan-path">{verifyPlan.path}</span>
+            <div className="verify-plan-heading">
+              <span className="verify-plan-title">교차 검증 절차</span>
+              <span className="verify-plan-path">{verifyPlan.path}</span>
+            </div>
+            {onHideEdge ? (
+              <button
+                type="button"
+                className="verify-plan-hide"
+                title="이 판정을 그래프에서 지웁니다. 로그에는 남아 있고, 같은 경로에 새 판정이 오면 다시 나타납니다."
+                onClick={() => selectedEdgeId && onHideEdge(selectedEdgeId)}
+              >
+                엣지 삭제
+              </button>
+            ) : null}
           </div>
           <ol
             className="verify-plan-list"

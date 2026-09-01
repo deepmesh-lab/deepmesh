@@ -412,6 +412,12 @@ code,
   height: clamp(440px, 56vh, 760px);
 }
 
+/* 그래프 페이지는 화면 전체를 쓴다. 개요처럼 높이를 고정하면 아래가 남는다. */
+.graph-row {
+  height: 100%;
+  min-height: 0;
+}
+
 /* 판정 추이 : 추론 지연 = 1 : 1 */
 .split-row {
   display: grid;
@@ -953,11 +959,20 @@ code,
   border-left-color: var(--verdict-relay);
 }
 
+/* 제목·경로는 왼쪽에 쌓고, 삭제 버튼은 카드 우측 상단에 붙인다. */
 .verify-plan-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+.verify-plan-heading {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  margin-bottom: 7px;
+  min-width: 0;
 }
 
 .verify-plan-title {
@@ -1402,20 +1417,72 @@ code,
   overflow-y: auto;
 }
 
-.ev {
-  display: grid;
-  grid-template-columns: 56px 66px 1fr;
-  gap: 9px;
-  padding: 9px 16px;
-  border-bottom: 1px solid var(--color-border-subtle);
+/* 한 항목 = 본문 버튼(간선 펼치기) + 상세 버튼. 둘을 나눈 이유는 클릭 한 번에
+   대화상자가 떠서 조사 흐름이 끊기지 않게 하기 위함이다. */
+.verify-plan-hide {
+  flex: none;
+  font-size: 10.5px;
+  padding: 3px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
   cursor: pointer;
-  align-items: baseline;
-  width: 100%;
-  text-align: left;
+}
+
+.verify-plan-hide:hover {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.ev {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .ev:hover {
   background: var(--color-surface-hover);
+}
+
+/* 펼쳐진 간선에 속한 로그. 배경을 칠하면 "여러 건 선택"으로 읽혀 띠만 쓴다. */
+.ev.on-edge {
+  box-shadow: inset 2px 0 0 var(--color-primary);
+}
+
+/* 그래프에서 삭제한 통신. 로그에는 남아 있고 눌러서 되살린다. */
+.ev.hidden-edge .ev-main {
+  opacity: 0.55;
+}
+
+.ev-restore {
+  font-style: normal;
+  font-size: 9.5px;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-surface-sunken);
+  color: var(--color-text-subtle);
+}
+
+.ev-main {
+  display: grid;
+  grid-template-columns: 56px 66px 1fr;
+  gap: 9px;
+  padding: 9px 4px 9px 16px;
+  cursor: pointer;
+  align-items: baseline;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: 0;
+}
+
+.ev-inspect {
+  align-self: center;
+  margin-right: 12px;
+  flex: none;
 }
 
 .ev.new {
@@ -1450,17 +1517,19 @@ code,
   display: block;
 }
 
-.badge.DROP {
+/* 배지는 verdict가 아니라 category를 표시한다. 이벤트로 남는 FORWARD는 예외 없이
+   cleared라서, verdict를 보여주면 "정상 전달"로 오해된다. */
+.badge.drop {
   background: var(--verdict-drop-weak);
   color: var(--verdict-drop);
 }
 
-.badge.RELAY {
+.badge.relay {
   background: var(--verdict-relay-weak);
   color: var(--verdict-relay-text);
 }
 
-.badge.FORWARD {
+.badge.cleared {
   background: var(--verdict-cleared-weak);
   color: var(--verdict-cleared);
 }

@@ -50,8 +50,8 @@ export function EventDetailDialog({ eventId, onClose }: Props) {
         title="탐지 이벤트 상세"
         badge={
           detail ? (
-            <span className={`badge ${detail.verdict}`} style={{ width: 66 }}>
-              {detail.verdict}
+            <span className={`badge ${detail.category}`} style={{ width: 66 }}>
+              {detail.category.toUpperCase()}
             </span>
           ) : undefined
         }

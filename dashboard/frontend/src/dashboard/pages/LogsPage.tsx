@@ -15,6 +15,18 @@ import type { Direction, EventListParams, Verdict } from '../internal/types'
 const VERDICTS: Verdict[] = ['FORWARD', 'DROP', 'RELAY']
 
 /**
+ * 화면에는 category를 보여주고 서버에는 verdict를 보낸다.
+ *
+ * 이벤트로 남는 조합은 FORWARD=cleared, DROP=drop, RELAY=relay 셋뿐이라 1:1이다.
+ * (benign은 이벤트로 저장되지 않는다)
+ */
+const VERDICT_FILTER_LABEL: Record<Verdict, string> = {
+  FORWARD: 'CLEARED',
+  DROP: 'DROP',
+  RELAY: 'RELAY',
+}
+
+/**
  * 필터를 URL 쿼리스트링에 두면 링크로 공유·북마크할 수 있고, 뒤로 가기가 자연스럽게 동작한다.
  */
 export function LogsPage() {
@@ -92,7 +104,7 @@ export function LogsPage() {
                       className={`btn ${activeVerdicts.includes(verdict) ? 'active' : ''}`}
                       onClick={() => toggleVerdict(verdict)}
                     >
-                      {verdict}
+                      {VERDICT_FILTER_LABEL[verdict]}
                     </button>
                   ))}
                 </div>
@@ -229,11 +241,13 @@ export function LogsPage() {
                     >
                       <td>{formatKstDateTime(event.occurredAt)}</td>
                       <td style={{ textAlign: 'left' }}>
+                        {/* verdict가 아니라 category. 이벤트로 남는 FORWARD는
+                            예외 없이 cleared다. */}
                         <span
-                          className={`badge ${event.verdict}`}
+                          className={`badge ${event.category}`}
                           style={{ width: 62 }}
                         >
-                          {event.verdict}
+                          {event.category.toUpperCase()}
                         </span>
                       </td>
                       <td style={{ textAlign: 'left' }}>

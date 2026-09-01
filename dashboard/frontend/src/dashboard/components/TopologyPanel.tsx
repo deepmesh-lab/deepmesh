@@ -2,9 +2,21 @@ import { useState } from 'react'
 import { ScenarioControls } from './ScenarioControls'
 import { TopologyGraph } from './topology/TopologyGraph'
 import { useDashboard } from '../internal/DashboardProvider'
+import type { EdgeView } from '../internal/hooks/useEdgeView'
 
-/** 개요와 토폴로지 그래프 페이지가 같은 패널을 쓴다. */
-export function TopologyPanel({ className = '' }: { className?: string }) {
+/**
+ * 개요와 토폴로지 그래프 페이지가 같은 패널을 쓴다.
+ *
+ * 다만 **보기 상태는 페이지가 들고 온다.** 전역에 두면 한쪽에서 지운 간선이 다른
+ * 쪽에서도 사라져 "왜 없지"가 된다. 페이지가 useEdgeView로 만든 값을 그대로 넘긴다.
+ */
+export function TopologyPanel({
+  className = '',
+  edgeView,
+}: {
+  className?: string
+  edgeView: EdgeView
+}) {
   const { topology, pods, openService } = useDashboard()
   const [showGrid, setShowGrid] = useState(true)
   const [relayoutToken, setRelayoutToken] = useState(0)
@@ -24,6 +36,10 @@ export function TopologyPanel({ className = '' }: { className?: string }) {
         showGrid={showGrid}
         relayoutToken={relayoutToken}
         onSelectService={openService}
+        selectedEdgeKey={edgeView.selectedEdgeKey}
+        onSelectEdge={edgeView.selectEdge}
+        hiddenEdgeKeys={edgeView.hiddenEdgeKeys}
+        onHideEdge={edgeView.hideEdge}
       />
 
       <div className="legend">
