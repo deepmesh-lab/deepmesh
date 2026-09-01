@@ -20,9 +20,10 @@ spec:
       serviceAccountName: dashboard-backend-sa
       containers:
         - name: dashboard-backend
-          image: uicheolshin/dashboard-backend:v2
-          # 버전 태그를 고정해 재사용하므로 기본값(IfNotPresent)이면 노드가 캐시된
-          # 옛 이미지를 계속 쓴다. 같은 태그로 다시 밀어도 반영되지 않는다.
+          image: uicheolshin/dashboard-backend:v3
+          # 코드가 바뀌면 **태그를 올린다.** 같은 태그에 덮어쓰면 매니페스트가 그대로라
+          # kubectl apply가 아무 일도 하지 않고(unchanged), 파드가 재시작되지 않아
+          # 옛 이미지가 계속 돈다. imagePullPolicy는 파드가 새로 뜰 때만 작동한다.
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

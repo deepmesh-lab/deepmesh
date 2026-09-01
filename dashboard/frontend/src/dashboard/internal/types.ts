@@ -454,9 +454,11 @@ export type DashboardStream = {
 export type DashboardStreamOptions = {
   namespace?: string
   /**
-   * 델타에 실릴 집계 구간. 실제 스트림은 이 값을 보내지 않는다 —
-   * 명세 2-1의 쿼리 파라미터는 `namespace`뿐이고 집계 구간은 서버가 정한다.
-   * 목 스트림에서만 화면의 timeRange 선택과 델타를 맞추는 데 쓴다.
+   * 스냅샷·델타를 만들 집계 구간. **쿼리 파라미터로 함께 보낸다.**
+   *
+   * 명세 2-1에는 `namespace`만 있지만, 구간을 서버가 정하게 두면 화면이 보는 것과 다른
+   * 값이 방송된다. 실제로 서버가 5m으로 고정하고 있어, 1시간을 보는 화면에 빈 스냅샷이
+   * 덮여 그래프가 통째로 지워졌다. 스냅샷은 병합이 아니라 교체다.
    */
   timeRange?: TopologyTimeRange
 }

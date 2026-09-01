@@ -27,7 +27,18 @@ const STREAM_EVENT_NAMES: DashboardStreamEventName[] = [
 
 export const createRealStream: DashboardStreamFactory = (options = {}) => {
   const namespace = options.namespace ?? 'default'
-  const url = `${BASE_URL}/dashboard/stream?namespace=${encodeURIComponent(namespace)}`
+  /*
+   * 집계 구간을 반드시 함께 보낸다.
+   *
+   * 백엔드는 이 값으로 스냅샷·델타를 만든다. 빠뜨리면 서버 기본값(5m)으로 계산되어,
+   * 1시간을 보는 화면에 "최근 5분에는 간선이 없다"는 빈 스냅샷이 덮인다. 스냅샷은
+   * 병합이 아니라 교체라 그 순간 그래프가 통째로 지워진다.
+   */
+  const query = new URLSearchParams({ namespace })
+  if (options.timeRange) {
+    query.set('timeRange', options.timeRange)
+  }
+  const url = `${BASE_URL}/dashboard/stream?${query.toString()}`
   const source = new EventSource(url)
 
   const handlers = new Map<string, Set<(payload: unknown) => void>>()

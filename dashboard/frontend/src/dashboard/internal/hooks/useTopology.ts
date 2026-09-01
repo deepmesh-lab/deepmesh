@@ -80,6 +80,19 @@ export function useTopology(
 
     return stream.subscribe('topology', (payload) => {
       if (payload.type === 'TOPOLOGY_SNAPSHOT') {
+        /*
+         * 노드가 하나도 없는 스냅샷은 버린다.
+         *
+         * 스냅샷은 병합이 아니라 교체다. 백엔드가 K8s에 잠깐 닿지 못하거나 집계 구간이
+         * 어긋나면 빈 스냅샷이 오는데, 그대로 적용하면 REST로 받아둔 화면이 통째로 지워지고
+         * 델타는 "변한 것"만 싣기 때문에 다음 변화가 올 때까지 영영 돌아오지 않는다.
+         *
+         * 노드는 K8s에서 오므로 정상이라면 비지 않는다. 간선은 트래픽이 없으면 실제로 빌 수
+         * 있어 판단 기준으로 쓰지 않는다.
+         */
+        if (payload.nodes.length === 0) {
+          return
+        }
         snapshotApplied.current = true
         setNodes(payload.nodes)
         setEdges(payload.edges)
