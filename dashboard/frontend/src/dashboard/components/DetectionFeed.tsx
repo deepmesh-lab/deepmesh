@@ -13,6 +13,8 @@ type Props = {
   hiddenEdgeKeys: ReadonlySet<string>
   /** 항목을 누르면 토폴로지에서 그 통신을 펼친다. 삭제된 것이면 먼저 되살린다. */
   onReveal: (edgeKey: string) => void
+  /** 그 한 건의 Pod → Pod 경로를 그리기 위해 이벤트 자체도 넘긴다. */
+  onFocusEvent: (event: DetectionEvent | null) => void
   /** 원본 응답 보기. 조사 흐름이 대화상자로 끊기지 않게 별도 버튼으로 뺐다. */
   onInspect: (eventId: string) => void
   /** 지금 토폴로지에 펼쳐져 있는 간선. 같은 간선의 로그를 알아볼 수 있게 표시한다. */
@@ -26,6 +28,7 @@ export function DetectionFeed({
   isLoading,
   hiddenEdgeKeys,
   onReveal,
+  onFocusEvent,
   onInspect,
   selectedEdgeKey,
 }: Props) {
@@ -73,7 +76,13 @@ export function DetectionFeed({
                         ? '그래프에서 삭제한 통신입니다. 눌러서 다시 불러옵니다.'
                         : '토폴로지에서 이 통신을 펼칩니다.'
                   }
-                  onClick={() => edgeKey && onReveal(edgeKey)}
+                  onClick={() => {
+                    if (!edgeKey) {
+                      return
+                    }
+                    onReveal(edgeKey)
+                    onFocusEvent(event)
+                  }}
                 >
                   <span className="t">{formatKstTime(event.occurredAt)}</span>
                   {/*

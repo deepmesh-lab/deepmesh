@@ -11,7 +11,12 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import type { PodMap } from '../../internal/hooks/usePods'
-import type { PodDetail, TopologyEdge, TopologyNode } from '../../internal/types'
+import type {
+  DetectionEvent,
+  PodDetail,
+  TopologyEdge,
+  TopologyNode,
+} from '../../internal/types'
 import { ComponentNode, PlainNode, PodNode, ServiceGroup } from './nodes'
 import { VerifyEdge, type VerifyFlowEdge } from './VerifyEdge'
 import { VerdictEdge, type EdgeKind, type VerdictFlowEdge } from './VerdictEdge'
@@ -148,6 +153,8 @@ type TopologyGraphProps = {
   hiddenEdgeKeys: ReadonlySet<string>
   /** 없으면 삭제 버튼을 그리지 않는다. 되살릴 로그 목록이 없는 화면에서는 넘기지 않는다. */
   onHideEdge?: (key: string) => void
+  /** 짚고 있는 탐지 이벤트. 그 한 건의 Pod → Pod 경로를 따로 그린다. */
+  focusedEvent: DetectionEvent | null
 }
 
 /** forward 간선이 나타났다 사라지는 시간. 눈에 띄되 잔상이 남지 않는 길이. */
@@ -206,6 +213,7 @@ export function TopologyGraph({
   onSelectEdge: selectEdge,
   hiddenEdgeKeys,
   onHideEdge,
+  focusedEvent,
 }: TopologyGraphProps) {
   const pulsingEdgeIds = useBenignPulse(edges)
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<Node>([])
@@ -340,6 +348,44 @@ export function TopologyGraph({
     )
   }, [shapeKey, relayoutToken, nodes, edges, podsOf, setFlowNodes])
 
+  /**
+   * 자기 자신 간선을 그릴 두 Pod.
+   *
+   * 서비스 단위로는 `comment → comment` 한 줄이지만 실제로는 **어느 replica가 어느
+   * replica를 쳤는지**가 핵심이다. 상자 둘레를 도는 고리로 그리면 Pod 원과 무관한 자리라
+   * 허공에 뜬 것처럼 보이고, 어느 replica인지도 알 수 없다.
+   *
+   * 짚어둔 이벤트가 있으면 그 이벤트의 출발·목적지 Pod를, 없으면 앞의 두 replica를 쓴다.
+   */
+  const selfHopPods = useMemo(() => {
+    const bySource = new Map<string, { from: string; to: string }>()
+
+    nodes.forEach((node) => {
+      const pods = podsOf(node)
+      if (pods.length === 0) {
+        return
+      }
+      const at = (index: number) => `${node.id}/pod-${index}`
+      // 기본값 — replica가 하나뿐이면 자기 자신으로 돌아오는 고리가 된다.
+      let from = at(0)
+      let to = at(pods.length > 1 ? 1 : 0)
+
+      if (focusedEvent && focusedEvent.serviceName === node.serviceName) {
+        const src = pods.findIndex((pod) => pod.podName === focusedEvent.podName)
+        const dst = pods.findIndex(
+          (pod) => pod.podIp !== '' && pod.podIp === focusedEvent.dstIp,
+        )
+        if (src >= 0 && dst >= 0) {
+          from = at(src)
+          to = at(dst)
+        }
+      }
+      bySource.set(node.id, { from, to })
+    })
+
+    return bySource
+  }, [nodes, podsOf, focusedEvent])
+
   // 하나의 통신 경로를 판정별로 갈라 그린다. drop·relay는 생겼을 때만 나타난다.
   const flowEdges = useMemo<Edge[]>(() => {
     const built: Edge[] = []
@@ -377,11 +423,15 @@ export function TopologyGraph({
         if (hiddenEdgeKeys.has(`${edge.id}#${kind}`)) {
           return
         }
+        // 자기 자신 간선은 서비스 상자가 아니라 **Pod 원 사이**로 잇는다.
+        const hop =
+          edge.source === edge.target ? selfHopPods.get(edge.source) : undefined
+
         const flowEdge: VerdictFlowEdge = {
           id: `${edge.id}#${kind}`,
           type: 'verdict',
-          source: edge.source,
-          target: edge.target,
+          source: hop ? hop.from : edge.source,
+          target: hop ? hop.to : edge.target,
           data: {
             edge,
             kind,
@@ -396,7 +446,14 @@ export function TopologyGraph({
     })
 
     return built
-  }, [edges, addedEdgeIds, selectedEdgeId, pulsingEdgeIds, hiddenEdgeKeys])
+  }, [
+    edges,
+    addedEdgeIds,
+    selectedEdgeId,
+    pulsingEdgeIds,
+    hiddenEdgeKeys,
+    selfHopPods,
+  ])
 
   // 선택된 판정 간선의 검증 절차를 그린다. 평소에는 아무것도 그리지 않는다.
   const verifyPlan = useMemo<VerifyPlan | null>(() => {
@@ -424,11 +481,25 @@ export function TopologyGraph({
     }
 
     const flow = VERIFY_FLOW[kind as VerifyTone]
-    const podCount = podsOf(service).length
-    const compromised = `${service.id}/pod-0`
+    const pods = podsOf(service)
+    const podCount = pods.length
+
+    /**
+     * 관측 주체 Pod. 이벤트를 짚었으면 그 Pod를, 아니면 첫 번째를 쓴다.
+     *
+     * 자기 자신 간선(형제 replica 측면이동)에서는 **어느 replica가 공격자인지**가 핵심
+     * 정보다. 첫 번째로 고정하면 엉뚱한 Pod를 감염된 것으로 그리게 된다.
+     */
+    const observedIndex =
+      focusedEvent && focusedEvent.serviceName === service.serviceName
+        ? pods.findIndex((pod) => pod.podName === focusedEvent.podName)
+        : -1
+    const compromisedIndex = observedIndex >= 0 ? observedIndex : 0
+    const compromised = `${service.id}/pod-${compromisedIndex}`
     // RELAY의 참조 응답은 형제 하나면 충분하다. 전부 이으면 선만 늘어난다.
+    const siblingIndex = compromisedIndex === 0 ? 1 : 0
     const sibling =
-      podCount > 1 ? [`${service.id}/pod-1`] : ([] as string[])
+      podCount > 1 ? [`${service.id}/pod-${siblingIndex}`] : ([] as string[])
 
     const resolve = (role: VerifyRole): string[] => {
       switch (role) {
@@ -497,7 +568,7 @@ export function TopologyGraph({
       steps: flow.steps.map((step) => step.label),
       edges: built,
     }
-  }, [selectedEdgeId, edges, nodes, podsOf])
+  }, [selectedEdgeId, edges, nodes, podsOf, focusedEvent])
 
   // 네 단계가 같은 통로를 지나 한꺼번에 보면 구분되지 않는다.
   // 한 단계씩 차례로 강조하고, 절차 패널의 행을 짚으면 그 단계에 멈춘다.

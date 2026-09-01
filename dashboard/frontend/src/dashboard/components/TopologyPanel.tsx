@@ -40,6 +40,7 @@ export function TopologyPanel({
         onSelectEdge={edgeView.selectEdge}
         hiddenEdgeKeys={edgeView.hiddenEdgeKeys}
         onHideEdge={edgeView.hideEdge}
+        focusedEvent={edgeView.focusedEvent}
       />
 
       <div className="legend">

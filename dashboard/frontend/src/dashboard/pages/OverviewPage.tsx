@@ -32,6 +32,7 @@ export function OverviewPage() {
             isLoading={feed.isLoading}
             hiddenEdgeKeys={edgeView.hiddenEdgeKeys}
             onReveal={edgeView.revealEdge}
+            onFocusEvent={edgeView.focusEvent}
             onInspect={openEvent}
             selectedEdgeKey={edgeView.selectedEdgeKey}
           />

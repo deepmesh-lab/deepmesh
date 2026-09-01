@@ -31,20 +31,31 @@ export const CONTROL_PLANE_PARTS = [
  * 자동 배치(dagre)는 간선이 늘 때마다 자리가 바뀌어 선이 꼬였다.
  * 구성이 고정된 토폴로지라 자리를 직접 정하는 편이 훨씬 읽기 좋다.
  *
- *   행\열      0               1          2       3
- *     0    external        frontend     auth    mysql
- *     1    control-plane      ·          ·      comment
- *     2    kubernetes         ·         post      ·
+ *   행\열      0               1          2         3          4
+ *     0    control-plane    frontend    post      mysql
+ *     1    external            ·         ·        auth     kubernetes
+ *     2        ·            comment      ·          ·
+ *
+ * **빈 칸은 남는 자리가 아니라 통로다.** 간선은 두 상자를 잇는 직선이라, 중간에 노드가
+ * 있으면 그대로 관통한다. 시연 시나리오에서 긴 간선은 둘뿐이고 각각 통로를 지난다.
+ *
+ *   external → auth      행 1을 직진 — (1,1)·(1,2)를 비워 둔 이유
+ *   post → comment       좌하 대각선 — 같은 두 칸을 지난다
+ *
+ * 나머지(external→frontend, frontend→post, post→mysql, post→auth, comment→auth,
+ * auth→kubernetes)는 인접하거나 짧은 대각선이라 걸리는 것이 없다.
+ *
+ * 노드를 새로 배치할 때는 **가장 긴 간선의 경로부터 비우고** 나머지를 채우는 편이 낫다.
  */
 const GRID: Record<string, [number, number]> = {
-  external: [0, 0],
+  'control-plane': [0, 0],
   frontend: [0, 1],
-  auth: [0, 2],
+  post: [0, 2],
   mysql: [0, 3],
-  'control-plane': [1, 0],
-  comment: [1, 3],
-  kubernetes: [2, 0],
-  post: [2, 2],
+  external: [1, 0],
+  auth: [1, 3],
+  kubernetes: [1, 4],
+  comment: [2, 1],
 }
 
 const COLUMN_GAP = 130

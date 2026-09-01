@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { VERDICT_CATEGORIES } from '../types'
-import type { TopologyEdge } from '../types'
+import type { DetectionEvent, TopologyEdge } from '../types'
 
 export type EdgeView = {
   /** 지금 펼쳐 놓은 간선(`간선ID#category`) */
@@ -11,6 +11,14 @@ export type EdgeView = {
   hideEdge: (key: string) => void
   /** 지워둔 것이면 되살리고, 그다음 펼친다. 탐지 이벤트를 눌렀을 때 쓴다. */
   revealEdge: (key: string) => void
+  /**
+   * 지금 짚고 있는 탐지 이벤트.
+   *
+   * 집계 간선은 서비스 단위라 어느 Pod가 어느 Pod를 쳤는지 모른다. 이벤트 하나에는
+   * 출발 Pod(podName)와 목적지 IP(dstIp)가 있어 그 한 건만은 정확히 그릴 수 있다.
+   */
+  focusedEvent: DetectionEvent | null
+  focusEvent: (event: DetectionEvent | null) => void
 }
 
 /**
@@ -25,10 +33,21 @@ export function useEdgeView(edges: TopologyEdge[]): EdgeView {
   const [hiddenEdgeKeys, setHiddenEdgeKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   )
+  const [focusedEvent, setFocusedEvent] = useState<DetectionEvent | null>(null)
 
-  /** 같은 간선을 다시 고르면 접는다. */
+  /** 같은 간선을 다시 고르면 접는다. 간선을 접으면 짚어둔 이벤트도 놓는다. */
   const selectEdge = useCallback((key: string | null) => {
-    setSelectedEdgeKey((current) => (current === key ? null : key))
+    setSelectedEdgeKey((current) => {
+      const next = current === key ? null : key
+      if (next === null) {
+        setFocusedEvent(null)
+      }
+      return next
+    })
+  }, [])
+
+  const focusEvent = useCallback((event: DetectionEvent | null) => {
+    setFocusedEvent(event)
   }, [])
 
   const hideEdge = useCallback((key: string) => {
@@ -89,5 +108,13 @@ export function useEdgeView(edges: TopologyEdge[]): EdgeView {
     })
   }, [edges])
 
-  return { selectedEdgeKey, selectEdge, hiddenEdgeKeys, hideEdge, revealEdge }
+  return {
+    selectedEdgeKey,
+    selectEdge,
+    hiddenEdgeKeys,
+    hideEdge,
+    revealEdge,
+    focusedEvent,
+    focusEvent,
+  }
 }
