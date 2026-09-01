@@ -36,8 +36,13 @@ export function totalOf(counts: VerdictCounts): number {
   return counts.benign + counts.cleared + counts.drop + counts.relay
 }
 
-/** (cleared + drop + relay) / total — 모델 기준 공격 판정 비율 */
-export function attackRateOf(counts: VerdictCounts): number {
+/**
+ * (cleared + drop + relay) / total — 모델이 이상하다고 판정한 비율.
+ *
+ * 분자에 cleared가 들어간다. 교차 검증이 뒤집은 건까지 세므로 "공격률"이 아니다.
+ * 실제로 집행된 비율은 blockRateOf다.
+ */
+export function anomalyRateOf(counts: VerdictCounts): number {
   const total = totalOf(counts)
   return total === 0 ? 0 : (counts.cleared + counts.drop + counts.relay) / total
 }

@@ -1,6 +1,10 @@
 /**
  * DeepMesh 대시보드 API 명세의 응답 스키마.
  * 필드명·nullability는 명세를 그대로 따른다. 임의로 추가하거나 이름을 바꾸지 않는다.
+ *
+ * 예외 하나 — 명세의 `attackRate`는 `anomalyRate`로 바꿔 쓴다. 그 값은 분자에 cleared를
+ * 포함해 "모델이 이상하다고 본 비율"이지 공격 비율이 아니다. 백엔드도 같이 바꿨으므로
+ * 명세 문서도 맞춰야 한다.
  */
 import type { RestResponse } from '../../api/restClient'
 
@@ -174,7 +178,7 @@ export type SummaryResponse = {
   clearedCount: number
   dropCount: number
   relayCount: number
-  attackRate: number
+  anomalyRate: number
   blockRate: number
   avgDetectionLatencyMs: number
   p95DetectionLatencyMs: number
@@ -242,7 +246,7 @@ export type ByServiceRow = {
   cleared: number
   drop: number
   relay: number
-  attackRate: number
+  anomalyRate: number
   blockRate: number
 }
 
@@ -398,7 +402,7 @@ export type StatsTickPayload = {
   clearedCount: number
   dropCount: number
   relayCount: number
-  attackRate: number
+  anomalyRate: number
   blockRate: number
   avgDetectionLatencyMs: number
 }

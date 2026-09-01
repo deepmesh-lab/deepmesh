@@ -34,7 +34,7 @@ public class StatsBroadcaster {
 				"STATS_TICK", summary.generatedAt(), TICK_RANGE,
 				summary.totalSequences(), summary.benignCount(), summary.clearedCount(),
 				summary.dropCount(), summary.relayCount(),
-				summary.attackRate(), summary.blockRate(), summary.avgDetectionLatencyMs()));
+				summary.anomalyRate(), summary.blockRate(), summary.avgDetectionLatencyMs()));
 	}
 
 	@Scheduled(fixedRate = 5000)

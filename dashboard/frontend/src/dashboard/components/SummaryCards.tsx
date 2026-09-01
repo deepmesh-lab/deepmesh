@@ -44,11 +44,14 @@ function buildCards(summary: SummaryResponse): CardSpec[] {
       sub: '정상 응답으로 대체',
     },
     {
-      key: 'attackRate',
+      // 전면은 blockRate다. anomalyRate는 교차 검증이 뒤집은 건(cleared)까지 세므로
+      // 큰 숫자가 그대로 위험으로 읽힌다 — 오탐만 있어도 100%가 된다.
+      // 실제로 무엇을 막았는지가 먼저 보여야 한다.
+      key: 'blockRate',
       tone: '',
+      value: formatPercent(summary.blockRate),
+      sub: `anomalyRate ${formatPercent(summary.anomalyRate)}`,
       // 평균과 p95를 나란히 둔다. 평균만 보면 꼬리 지연이 가려진다. (명세 1-4)
-      value: formatPercent(summary.attackRate),
-      sub: `blockRate ${formatPercent(summary.blockRate)}`,
       sub2:
         `avg ${summary.avgDetectionLatencyMs.toFixed(2)}ms, ` +
         `p95 ${summary.p95DetectionLatencyMs.toFixed(2)}ms`,

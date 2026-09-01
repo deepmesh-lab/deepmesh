@@ -5,7 +5,7 @@
 import { RestApiError, type RestResponse } from '../../../api/restClient'
 import { intervalToMs, timeRangeToMs, toKstIso } from '../time'
 import {
-  attackRateOf,
+  anomalyRateOf,
   blockRateOf,
   emptyCounts,
   resolveNodeStatus,
@@ -307,7 +307,7 @@ export const mockDashboardApi: DashboardApi = {
       clearedCount: counts.cleared,
       dropCount: counts.drop,
       relayCount: counts.relay,
-      attackRate: Number(attackRateOf(counts).toFixed(5)),
+      anomalyRate: Number(anomalyRateOf(counts).toFixed(5)),
       blockRate: Number(blockRateOf(counts).toFixed(5)),
       avgDetectionLatencyMs: average(samples),
       p95DetectionLatencyMs: percentile(samples, 0.95) ?? 0,
@@ -417,7 +417,7 @@ export const mockDashboardApi: DashboardApi = {
           serviceName: node.serviceName,
           total: totalOf(counts),
           ...counts,
-          attackRate: Number(attackRateOf(counts).toFixed(5)),
+          anomalyRate: Number(anomalyRateOf(counts).toFixed(5)),
           blockRate: Number(blockRateOf(counts).toFixed(5)),
         }
       })

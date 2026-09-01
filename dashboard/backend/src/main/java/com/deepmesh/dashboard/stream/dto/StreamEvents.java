@@ -72,7 +72,7 @@ public final class StreamEvents {
 			String type, OffsetDateTime ts, String timeRange,
 			long totalSequences, long benignCount, long clearedCount,
 			long dropCount, long relayCount,
-			double attackRate, double blockRate, Double avgDetectionLatencyMs) {
+			double anomalyRate, double blockRate, Double avgDetectionLatencyMs) {
 	}
 
 	/**

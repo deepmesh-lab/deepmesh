@@ -8,7 +8,7 @@
  *   alert     — DROP·RELAY 발생 시 즉시
  */
 import { timeRangeToMs, toKstIso } from '../time'
-import { attackRateOf, blockRateOf, totalOf } from '../verdict'
+import { anomalyRateOf, blockRateOf, totalOf } from '../verdict'
 import type {
   AlertPayload,
   ConnectionState,
@@ -164,7 +164,7 @@ export const createMockStream: DashboardStreamFactory = (options = {}) => {
       clearedCount: counts.cleared,
       dropCount: counts.drop,
       relayCount: counts.relay,
-      attackRate: Number(attackRateOf(counts).toFixed(5)),
+      anomalyRate: Number(anomalyRateOf(counts).toFixed(5)),
       blockRate: Number(blockRateOf(counts).toFixed(5)),
       avgDetectionLatencyMs: average(latencySamplesInRange(fromMs, now + 1)),
     }
