@@ -6,7 +6,7 @@
 
 ```bash
 npm install
-npm run dev     # http://localhost:3100
+npm run dev     # http://localhost:3110
 ```
 
 기본값은 **목 데이터 모드**다. 백엔드 없이 바로 뜬다.
