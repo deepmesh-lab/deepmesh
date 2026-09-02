@@ -10,20 +10,27 @@ import {
   fromDateTimeLocalValue,
   toDateTimeLocalValue,
 } from '../internal/time'
-import type { Direction, EventListParams, Verdict } from '../internal/types'
-
-const VERDICTS: Verdict[] = ['FORWARD', 'DROP', 'RELAY']
+import { VERDICT_CATEGORIES } from '../internal/types'
+import type {
+  Direction,
+  EventListParams,
+  VerdictCategory,
+} from '../internal/types'
 
 /**
- * 화면에는 category를 보여주고 서버에는 verdict를 보낸다.
+ * 거르는 축은 verdict가 아니라 category다.
  *
- * 이벤트로 남는 조합은 FORWARD=cleared, DROP=drop, RELAY=relay 셋뿐이라 1:1이다.
- * (benign은 이벤트로 저장되지 않는다)
+ * verdict `FORWARD` 하나에 benign(정상 전달)과 cleared(이상 판정 후 교차 검증 통과)가
+ * 모두 들어가서, verdict로는 둘을 가를 수 없다. 화면이 보여주는 것도 category다.
+ *
+ * 라벨은 개요 카드·토폴로지 범례와 같은 말을 쓴다. 같은 것을 화면마다 다르게 부르면
+ * 사용자가 서로 다른 개념으로 읽는다.
  */
-const VERDICT_FILTER_LABEL: Record<Verdict, string> = {
-  FORWARD: 'CLEARED',
-  DROP: 'DROP',
-  RELAY: 'RELAY',
+const CATEGORY_FILTER_LABEL: Record<VerdictCategory, string> = {
+  benign: '정상 판정 (benign)',
+  cleared: '교차 검증 통과 (cleared)',
+  drop: '차단 (drop)',
+  relay: '응답 대체 (relay)',
 }
 
 /**
@@ -34,7 +41,7 @@ export function LogsPage() {
   const { openEvent } = useDashboard()
   const { isMock } = useDataSource()
 
-  const verdicts = (searchParams.get('verdict') ?? '')
+  const categories = (searchParams.get('category') ?? '')
     .split(',')
     .filter(Boolean)
   const serviceName = searchParams.get('serviceName') ?? ''
@@ -45,14 +52,14 @@ export function LogsPage() {
 
   const params = useMemo<EventListParams>(
     () => ({
-      verdict: verdicts.length > 0 ? verdicts.join(',') : undefined,
+      category: categories.length > 0 ? categories.join(',') : undefined,
       serviceName: serviceName || undefined,
       podName: podName || undefined,
       direction: (direction || undefined) as Direction | undefined,
       from: from || undefined,
       to: to || undefined,
     }),
-    [verdicts.join(','), serviceName, podName, direction, from, to],
+    [categories.join(','), serviceName, podName, direction, from, to],
   )
 
   const history = useEventHistory(params)
@@ -71,14 +78,15 @@ export function LogsPage() {
    * 필터를 걸지 않으면 서버는 전체를 준다. 그 상태를 "셋 다 선택"으로 보여준다 —
    * 아무것도 안 눌린 화면은 "아무것도 안 나온다"로 오해된다.
    */
-  const activeVerdicts = verdicts.length > 0 ? verdicts : VERDICTS
+  const activeCategories: readonly string[] =
+    categories.length > 0 ? categories : VERDICT_CATEGORIES
 
-  function toggleVerdict(verdict: Verdict) {
-    const next = activeVerdicts.includes(verdict)
-      ? activeVerdicts.filter((value) => value !== verdict)
-      : [...activeVerdicts, verdict]
-    // 셋 다 선택이면 파라미터를 비워 '전체'로 되돌린다. URL이 짧아지고 의미도 같다.
-    update('verdict', next.length === VERDICTS.length ? '' : next.join(','))
+  function toggleCategory(category: VerdictCategory) {
+    const next = activeCategories.includes(category)
+      ? activeCategories.filter((value) => value !== category)
+      : [...activeCategories, category]
+    // 넷 다 선택이면 파라미터를 비워 '전체'로 되돌린다. URL이 짧아지고 의미도 같다.
+    update('category', next.length === VERDICT_CATEGORIES.length ? '' : next.join(','))
   }
 
   return (
@@ -97,14 +105,14 @@ export function LogsPage() {
               <div className="field">
                 <label>판정</label>
                 <div className="chips">
-                  {VERDICTS.map((verdict) => (
+                  {VERDICT_CATEGORIES.map((category) => (
                     <button
                       type="button"
-                      key={verdict}
-                      className={`btn ${activeVerdicts.includes(verdict) ? 'active' : ''}`}
-                      onClick={() => toggleVerdict(verdict)}
+                      key={category}
+                      className={`btn ${activeCategories.includes(category) ? 'active' : ''}`}
+                      onClick={() => toggleCategory(category)}
                     >
-                      {VERDICT_FILTER_LABEL[verdict]}
+                      {CATEGORY_FILTER_LABEL[category]}
                     </button>
                   ))}
                 </div>
@@ -174,34 +182,35 @@ export function LogsPage() {
                   }
                 />
               </div>
+            </div>
 
-              <div className="filter-actions">
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() =>
-                    setSearchParams(new URLSearchParams(), { replace: true })
-                  }
-                >
-                  필터 초기화
-                </button>
+            {/* 필터 행 아래 별도 행. 두 버튼이 항상 같은 너비로 반씩 차지한다. */}
+            <div className="filter-actions">
+              <button
+                type="button"
+                className="btn"
+                onClick={() =>
+                  setSearchParams(new URLSearchParams(), { replace: true })
+                }
+              >
+                필터 초기화
+              </button>
 
-                <button
-                  type="button"
-                  className="btn primary"
-                  disabled={isMock}
-                  title={
-                    isMock
-                      ? '실제 백엔드에서만 내려받을 수 있습니다.'
-                      : '현재 필터에 해당하는 전체를 CSV로 내려받습니다.'
-                  }
-                  onClick={() => {
-                    window.location.href = eventsExportUrl(params)
-                  }}
-                >
-                  CSV 내려받기
-                </button>
-              </div>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={isMock}
+                title={
+                  isMock
+                    ? '실제 백엔드에서만 내려받을 수 있습니다.'
+                    : '현재 필터에 해당하는 전체를 CSV로 내려받습니다.'
+                }
+                onClick={() => {
+                  window.location.href = eventsExportUrl(params)
+                }}
+              >
+                CSV 내려받기
+              </button>
             </div>
           </div>
 
@@ -214,9 +223,7 @@ export function LogsPage() {
           ) : history.items.length === 0 ? (
             <div className="empty">
               <b>조건에 해당하는 이벤트가 없습니다</b>
-              모델이 ATTACK으로 판정한 시퀀스만 조회됩니다.
-              <br />
-              BENIGN 트래픽은 개별 저장되지 않습니다.
+              판정된 HTTP 메시지 1건당 1행입니다. 개요 카드의 건수와 같은 단위입니다.
             </div>
           ) : (
             <div className="pb">
@@ -241,8 +248,8 @@ export function LogsPage() {
                     >
                       <td>{formatKstDateTime(event.occurredAt)}</td>
                       <td style={{ textAlign: 'left' }}>
-                        {/* verdict가 아니라 category. 이벤트로 남는 FORWARD는
-                            예외 없이 cleared다. */}
+                        {/* verdict가 아니라 category. FORWARD 하나에 benign과
+                            cleared가 함께 들어가 verdict로는 구분이 안 된다. */}
                         <span
                           className={`badge ${event.category}`}
                           style={{ width: 62 }}

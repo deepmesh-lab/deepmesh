@@ -18,7 +18,7 @@ public final class StreamEvents {
 	}
 
 	/**
-	 * BENIGN은 담지 않는다 — cleared·drop·relay 세 분류뿐이다. benign 규모는 stats가
+	 * benign·cleared·drop·relay 네 분류가 모두 들어온다. 전체 트래픽 규모는 stats가
 	 * 나른다.
 	 *
 	 * <p>SSE id는 이 배치의 최대 eventId다. 페이로드에 latestEventId를 따로 넣지 않는다 —

@@ -17,24 +17,24 @@ function buildCards(summary: SummaryResponse): CardSpec[] {
   return [
     {
       key: 'totalSequences',
-      label: '판정 시퀀스',
+      label: '판정 건수',
       tone: '',
       value: summary.totalSequences.toLocaleString(),
-      sub: '서비스 간 통신 판정 건수',
+      sub: '판정된 HTTP 메시지 수 — 로그 조회와 같은 단위',
     },
     {
       key: 'benignCount',
-      label: '정상 (forward)',
+      label: '정상 판정 (benign)',
       tone: 'benign',
       value: summary.benignCount.toLocaleString(),
-      sub: '모델이 정상으로 판정',
+      sub: '모델이 정상으로 판정 — 검증 불필요',
     },
     {
       key: 'clearedCount',
       label: '교차 검증 통과 (cleared)',
       tone: 'cleared',
       value: summary.clearedCount.toLocaleString(),
-      sub: '교차 검증이 판정을 뒤집음',
+      sub: '모델은 이상, 교차 검증이 뒤집음',
     },
     {
       key: 'dropCount',

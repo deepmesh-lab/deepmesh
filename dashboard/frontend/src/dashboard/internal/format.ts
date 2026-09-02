@@ -9,3 +9,32 @@
 export function fixed(value: number | null | undefined, digits: number) {
   return value === null || value === undefined ? null : value.toFixed(digits)
 }
+
+/**
+ * 판정 시그니처를 사람이 읽는 조각으로 나눈다.
+ *
+ * 프록시가 `메서드|대상|경로|q:쿼리|b:본문힌트` 로 만든다. 형식이 다르면 통째로
+ * `경로`에 담아 그대로 보여준다 — 파싱에 실패했다고 정보를 버리지 않는다.
+ */
+export function parseSignature(signature: string | null): {
+  method: string | null
+  target: string | null
+  path: string
+  query: string | null
+} | null {
+  if (!signature) {
+    return null
+  }
+  const parts = signature.split('|')
+  if (parts.length < 3) {
+    return { method: null, target: null, path: signature, query: null }
+  }
+  const [method, target, path, ...rest] = parts
+  const query = rest.find((part) => part.startsWith('q:'))?.slice(2) ?? null
+  return {
+    method,
+    target,
+    path,
+    query: query && query.length > 0 ? query : null,
+  }
+}

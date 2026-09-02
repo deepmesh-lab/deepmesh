@@ -64,7 +64,7 @@ docker push uicheolshin/dashboard-frontend:latest
 두 Deployment 모두 `imagePullPolicy: Always`다. 이 설정이 없으면 노드가 캐시된 옛 이미지를
 계속 쓴다. 반대로 말하면 push를 빠뜨린 채 rollout만 돌리면 바뀐 게 없다.
 
-**백엔드 코드를 고쳤으면 태그를 올린다** (`v3` → `v4` …). 같은 태그에 덮어쓰면
+**백엔드 코드를 고쳤으면 태그를 올린다** (`v4` → `v5` …). 같은 태그에 덮어쓰면
 `kubectl apply`가 매니페스트 변화를 못 느껴 `unchanged`로 끝나고, 파드가 재시작되지 않아
 **옛 이미지가 그대로 돈다.** `imagePullPolicy: Always`는 파드가 새로 뜰 때만 작동하기
 때문이다. 실제로 이 함정에 걸려 백엔드가 안 바뀐 채 한참을 헤맸다.

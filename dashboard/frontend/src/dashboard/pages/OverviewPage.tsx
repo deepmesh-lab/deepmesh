@@ -8,7 +8,7 @@ import { useEdgeView } from '../internal/hooks/useEdgeView'
 export function OverviewPage() {
   const { feed, summary, openEvent, topology } = useDashboard()
   // 이 페이지의 토폴로지와 탐지 피드가 나눠 쓰는 보기 상태. 다른 페이지와 섞이지 않는다.
-  const edgeView = useEdgeView(topology.edges)
+  const edgeView = useEdgeView(topology.edges, feed.events)
 
   return (
     <div className="page">
@@ -30,11 +30,9 @@ export function OverviewPage() {
             edges={topology.edges}
             omittedCount={feed.omittedCount}
             isLoading={feed.isLoading}
-            hiddenEdgeKeys={edgeView.hiddenEdgeKeys}
-            onReveal={edgeView.revealEdge}
-            onFocusEvent={edgeView.focusEvent}
+            onToggle={edgeView.toggleEvent}
             onInspect={openEvent}
-            selectedEdgeKey={edgeView.selectedEdgeKey}
+            activeEventIds={edgeView.activeEventIds}
           />
         </section>
       </div>

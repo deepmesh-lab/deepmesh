@@ -76,6 +76,7 @@ export const realDashboardApi: DashboardApi = {
         afterId: params.afterId,
         size: params.size,
         verdict: params.verdict,
+        category: params.category,
         serviceName: params.serviceName,
         podName: params.podName,
         direction: params.direction,
@@ -109,6 +110,7 @@ export function eventsExportUrl(params: EventListParams = {}) {
   const query = new URLSearchParams()
   const entries: [string, string | undefined][] = [
     ['verdict', params.verdict],
+    ['category', params.category],
     ['serviceName', params.serviceName],
     ['podName', params.podName],
     ['direction', params.direction],

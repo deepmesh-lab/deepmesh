@@ -37,8 +37,8 @@ class EventExportTest {
 	/** 값이 모두 채워진 시드 건수. 앞 200건은 DROP, 나머지는 RELAY. */
 	private static final int SEEDED = 250;
 	private static final int DROPS = 200;
-	/** 위 250건 + 점수·지연이 비어 있는 FORWARD 1건. */
-	private static final int TOTAL = SEEDED + 1;
+	/** 위 250건 + 점수·지연이 비어 있는 cleared 1건 + benign 1건. */
+	private static final int TOTAL = SEEDED + 2;
 
 	@Autowired
 	MockMvc mockMvc;
@@ -75,24 +75,57 @@ class EventExportTest {
 				  "signature": "TCP|203.0.113.7:443" }
 				""";
 
+		// 정상 전달 1건. verdict는 cleared와 같은 FORWARD지만 category가 다르다 —
+		// verdict 필터로는 둘을 못 가른다는 것을 여기서 고정한다.
+		String benign = """
+				{ "occurredAt": "2026-08-08T13:21:00.850+09:00", "direction": "REQUEST",
+				  "sessionId": "s-benign", "srcIp": "10.244.1.5", "srcPort": 48813,
+				  "dstIp": "203.0.113.7", "dstPort": 443, "protocol": "TCP",
+				  "modelVerdict": "BENIGN", "ocsvmScore": 0.42,
+				  "verdict": "FORWARD", "category": "benign",
+				  "detectionLatencyMs": 0.5, "signature": "GET|post-service:8080|/api/posts|q:|b:" }
+				""";
+
 		String batch = """
 				{
 				  "proxy": { "serviceName": "post", "podName": "post-a", "nodeName": "worker-1",
 				             "namespace": "default" },
 				  "windowStats": { "from": "2026-08-08T13:21:00+09:00", "to": "2026-08-08T13:21:01+09:00",
 				                   "benign": 100, "cleared": 0, "drop": 200, "relay": 50 },
-				  "events": [%s,%s]
+				  "events": [%s,%s,%s]
 				}
-				""".formatted(events, noScores);
+				""".formatted(events, benign, noScores);
 
 		mockMvc.perform(post("/ingest/events")
 						.contentType(MediaType.APPLICATION_JSON).content(batch))
 				.andExpect(status().isOk());
 	}
 
+	@Test
+	void category로_거르면_같은_verdict_안에서도_갈린다() throws Exception {
+		// FORWARD에는 benign과 cleared가 함께 들어 있다.
+		assertThat(dataLines(export(List.of("FORWARD")))).hasSize(2);
+		// category로 거르면 정확히 하나씩이다.
+		assertThat(dataLines(export(null, List.of("benign")))).hasSize(1);
+		assertThat(dataLines(export(null, List.of("cleared")))).hasSize(1);
+	}
+
+	@Test
+	void category_필터는_목록_조회에도_적용된다() throws Exception {
+		mockMvc.perform(get("/dashboard/events").param("category", "benign"))
+				.andExpect(status().isOk())
+				.andExpect(content().string(org.hamcrest.Matchers.containsString("\"category\":\"benign\"")))
+				.andExpect(content().string(org.hamcrest.Matchers.not(
+						org.hamcrest.Matchers.containsString("\"category\":\"drop\""))));
+	}
+
 	private String export(List<String> verdicts) throws Exception {
+		return export(verdicts, null);
+	}
+
+	private String export(List<String> verdicts, List<String> categories) throws Exception {
 		StringWriter out = new StringWriter();
-		service.exportCsv(new EventQuery(null, null, null, verdicts,
+		service.exportCsv(new EventQuery(null, null, null, verdicts, categories,
 				null, null, null, null, null), out);
 		return out.toString();
 	}

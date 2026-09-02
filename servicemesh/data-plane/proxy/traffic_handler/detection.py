@@ -45,13 +45,12 @@ def _rewrite_dst(frame, dst_ip, dst_port):
 
 class DetectionPipeline:
     def __init__(self, source, adapter, verdicts, target_port, proxy_port,
-                 telemetry=None, original_dst=None):
+                 original_dst=None):
         self._source = source
         self._adapter = adapter
         self._verdicts = verdicts
         self._target_port = target_port
         self._proxy_port = proxy_port
-        self._telemetry = telemetry
         # 집행 경로가 등록한 원래 목적지. iptables REDIRECT로 프레임의 목적지가 DNAT되어
         # 있어(dst=127.0.0.1:9011), 이걸로 원본을 되찾는다 (original_dst.py 참고).
         self._original_dst = original_dst
@@ -94,12 +93,15 @@ class DetectionPipeline:
             dst_ip=key.dst_ip, dst_port=key.dst_port,
         )
         self._verdicts.put(session_id, observation)
-        # benign 시퀀스는 개별 이벤트가 없으므로 집계 카운터만 올린다.
-        # cleared/drop/relay는 집행 경로에서 emit되며 그때 집계된다.
-        if self._telemetry is not None and not detection.is_malicious:
-            # 목적지를 함께 넘긴다. benign은 개별 이벤트로 남지 않으므로, 이걸 빼면
-            # 대시보드가 평시 통신 경로(엣지)를 그릴 근거가 사라진다.
-            self._telemetry.incr("benign", peer=observation.dst_ip)
+        # 여기서는 아무것도 집계하지 않는다.
+        #
+        # 예전에는 benign을 이 자리에서 셌는데, 그러면 세는 단위가 분류마다 달라진다.
+        # 판정은 윈도우가 찬 뒤 **프레임마다** 나오므로(Algorithm 1 line 24의 sliding)
+        # 요청 하나가 benign 수십 건이 되는 반면, cleared/drop/relay는 집행 경로에서
+        # HTTP 메시지 1건당 1이었다. 그래서 개요의 정상 건수와 로그의 행 수가 10배 넘게
+        # 벌어졌고, 이상 판정률도 실제보다 훨씬 작게 나왔다.
+        #
+        # 네 분류를 모두 telemetry.emit()에서 센다 — 전부 HTTP 메시지 단위다.
         if detection.is_malicious:
             logger.warning(
                 "이상 판정: session=%d score=%.4f dir=%s %s:%d→%s:%d",

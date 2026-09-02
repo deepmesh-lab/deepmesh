@@ -23,7 +23,13 @@ import {
 } from './geometry'
 
 /** 하나의 통신 경로가 판정별로 여러 간선으로 갈라진다. */
-export type EdgeKind = 'idle' | 'forward' | 'cleared' | 'drop' | 'relay'
+/**
+ * 간선 한 가닥의 종류. **category와 같은 이름을 쓴다.**
+ *
+ * 예전에는 benign 가닥을 'forward'라 불렀는데, forward는 집행 축(verdict)의 값이라
+ * cleared까지 포함한다. 한 화면에서 같은 말이 두 가지를 가리키면 반드시 헷갈린다.
+ */
+export type EdgeKind = 'idle' | 'benign' | 'cleared' | 'drop' | 'relay'
 
 export type VerdictEdgeData = Record<string, unknown> & {
   edge: TopologyEdge
@@ -40,7 +46,7 @@ export type VerdictFlowEdge = Edge<VerdictEdgeData, 'verdict'>
 
 const KIND_LABEL: Record<EdgeKind, string> = {
   idle: '경로만 존재 (집계 구간 내 트래픽 없음)',
-  forward: '정상 전달 (forward)',
+  benign: '정상 판정 (benign)',
   cleared: '교차 검증 통과 (cleared)',
   drop: '요청 차단 (drop)',
   relay: '응답 대체 (relay)',
@@ -144,7 +150,7 @@ export function VerdictEdge({
 
   // 트래픽이 많을수록 빨리 점멸한다.
   const period =
-    kind === 'forward'
+    kind === 'benign'
       ? Math.max(0.6, 2.0 - Math.min(1.4, (edge?.counts.benign ?? 0) / 900))
       : 1
 

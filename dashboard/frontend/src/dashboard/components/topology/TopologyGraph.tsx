@@ -46,7 +46,7 @@ const edgeTypes = { verdict: VerdictEdge, verify: VerifyEdge }
 /** 판정별 간선이 겹치지 않도록 나란히 벌린다. 상자에 닿는 지점도 그만큼 벌어진다. */
 const KIND_OFFSET: Record<EdgeKind, number> = {
   idle: 0,
-  forward: 0,
+  benign: 0,
   drop: -17,
   cleared: 17,
   relay: 34,
@@ -149,15 +149,30 @@ type TopologyGraphProps = {
    */
   selectedEdgeKey: string | null
   onSelectEdge: (key: string | null) => void
-  /** 그래프에서 지운 간선. 그래프 페이지는 빈 집합을 넘겨 항상 전부 보여준다. */
-  hiddenEdgeKeys: ReadonlySet<string>
-  /** 없으면 삭제 버튼을 그리지 않는다. 되살릴 로그 목록이 없는 화면에서는 넘기지 않는다. */
-  onHideEdge?: (key: string) => void
+  /** 탐지 피드에서 켜 놓은 간선. 무엇을 그릴지는 오직 피드가 정한다. */
+  activeEdgeKeys: ReadonlySet<string>
+  /** 피드에 로그가 있는 간선. 여기 없으면 끌 수단이 없으므로 그대로 그린다. */
+  knownEdgeKeys: ReadonlySet<string>
   /** 짚고 있는 탐지 이벤트. 그 한 건의 Pod → Pod 경로를 따로 그린다. */
   focusedEvent: DetectionEvent | null
 }
 
-/** forward 간선이 나타났다 사라지는 시간. 눈에 띄되 잔상이 남지 않는 길이. */
+/**
+ * 이 판정 간선을 그리는가.
+ *
+ * 피드가 아는 간선이면 사용자가 켜 둔 것만 그린다. 모르는 간선 — 집계에만 남은 옛
+ * 판정 — 은 피드에서 끌 수단이 없으므로 그대로 그린다. 이 예외가 없으면 새로고침
+ * 직후처럼 피드가 비었을 때 그래프가 통째로 빈다.
+ */
+function isDrawn(
+  key: string,
+  activeEdgeKeys: ReadonlySet<string>,
+  knownEdgeKeys: ReadonlySet<string>,
+) {
+  return knownEdgeKeys.has(key) ? activeEdgeKeys.has(key) : true
+}
+
+/** benign 간선이 나타났다 사라지는 시간. 눈에 띄되 잔상이 남지 않는 길이. */
 const PULSE_MS = 1200
 
 /**
@@ -211,8 +226,8 @@ export function TopologyGraph({
   onSelectService,
   selectedEdgeKey: selectedEdgeId,
   onSelectEdge: selectEdge,
-  hiddenEdgeKeys,
-  onHideEdge,
+  activeEdgeKeys,
+  knownEdgeKeys,
   focusedEvent,
 }: TopologyGraphProps) {
   const pulsingEdgeIds = useBenignPulse(edges)
@@ -221,7 +236,7 @@ export function TopologyGraph({
   const relayoutRef = useRef(relayoutToken)
   const flowRef = useRef<ReactFlowInstance | null>(null)
 
-  const podsOf = useMemo(() => {
+  const rawPodsOf = useMemo(() => {
     return (node: TopologyNode): PodDetail[] => {
       if (!node.proxyEnabled) {
         return []
@@ -230,6 +245,68 @@ export function TopologyGraph({
       return known && known.length > 0 ? known : placeholderPods(node)
     }
   }, [pods])
+
+  /**
+   * 삭제된 간선 때문에 근거가 화면에서 사라진 노드는 빨간 표시도 푼다.
+   *
+   * 백엔드는 "집계 구간에 drop+relay가 1건이라도 있으면 COMPROMISED"로 정한다. 사용자가
+   * 그 사건을 그래프에서 지웠는데 노드만 계속 빨가면, 왜 빨간지 화면에서 설명되지 않는다.
+   *
+   * 다만 **원래 그런 간선이 있었고 그것들이 전부 지워졌을 때만** 푼다. 애초에 없었다면
+   * (상한에 걸려 external로 접혔거나 하는 경우) 백엔드 판단을 그대로 둔다 — 근거가 화면
+   * 밖에 있을 뿐 사실이 아닌 것은 아니다.
+   */
+  const clearedNodeIds = useMemo(() => {
+    const cleared = new Set<string>()
+
+    nodes.forEach((node) => {
+      const causes = edges.filter(
+        (edge) =>
+          edge.source === node.id &&
+          (edge.counts.drop > 0 || edge.counts.relay > 0),
+      )
+      if (causes.length === 0) {
+        return
+      }
+      const allOff = causes.every((edge) =>
+        (['drop', 'relay'] as const)
+          .filter((kind) => edge.counts[kind] > 0)
+          .every(
+            (kind) =>
+              !isDrawn(`${edge.id}#${kind}`, activeEdgeKeys, knownEdgeKeys),
+          ),
+      )
+      if (allOff) {
+        cleared.add(node.id)
+      }
+    })
+
+    return cleared
+  }, [nodes, edges, activeEdgeKeys, knownEdgeKeys])
+
+  /** 빨간 표시를 푼 노드는 Pod도 함께 푼다. 근거가 같은 사건이다. */
+  const podsOf = useMemo(() => {
+    return (node: TopologyNode): PodDetail[] => {
+      const list = rawPodsOf(node)
+      if (!clearedNodeIds.has(node.id)) {
+        return list
+      }
+      return list.map((pod) =>
+        pod.status === 'COMPROMISED' ? { ...pod, status: 'HEALTHY' as const } : pod,
+      )
+    }
+  }, [rawPodsOf, clearedNodeIds])
+
+  /** 화면에 그릴 노드. 상태만 바꾼 사본이고 배치·집계에는 영향이 없다. */
+  const displayNodes = useMemo(
+    () =>
+      nodes.map((node) =>
+        clearedNodeIds.has(node.id) && node.status === 'COMPROMISED'
+          ? { ...node, status: 'HEALTHY' as const }
+          : node,
+      ),
+    [nodes, clearedNodeIds],
+  )
 
   const shapeKey = topologyShapeKey(
     nodes,
@@ -243,9 +320,9 @@ export function TopologyGraph({
     const forced = relayoutRef.current !== relayoutToken
     if (forced || shapeRef.current !== shapeKey) {
       // 형태가 바뀌었다 — 새로 배치한다. 사용자가 옮긴 위치는 여기서만 초기화된다.
-      const placements = layoutTopology(nodes, edges, (n) => podsOf(n).length)
+      const placements = layoutTopology(displayNodes, edges, (n) => podsOf(n).length)
 
-      nodes.forEach((node) => {
+      displayNodes.forEach((node) => {
         const at = placements[node.id]
         if (node.kind === 'CONTROL_PLANE') {
           next.push({
@@ -328,9 +405,9 @@ export function TopologyGraph({
     }
 
     // 형태는 그대로 — 위치는 두고 데이터만 갈아끼운다.
-    const nodeById = new Map(nodes.map((node) => [node.id, node]))
+    const nodeById = new Map(displayNodes.map((node) => [node.id, node]))
     const podById = new Map<string, PodDetail>()
-    nodes.forEach((node) => {
+    displayNodes.forEach((node) => {
       podsOf(node).forEach((pod, index) => {
         podById.set(`${node.id}/pod-${index}`, pod)
       })
@@ -346,7 +423,7 @@ export function TopologyGraph({
         return node ? { ...flowNode, data: { ...flowNode.data, node } } : flowNode
       }),
     )
-  }, [shapeKey, relayoutToken, nodes, edges, podsOf, setFlowNodes])
+  }, [shapeKey, relayoutToken, displayNodes, edges, podsOf, setFlowNodes])
 
   /**
    * 자기 자신 간선을 그릴 두 Pod.
@@ -397,11 +474,11 @@ export function TopologyGraph({
         ? BIDIRECTIONAL_OFFSET
         : 0
       const kinds: EdgeKind[] = []
-      // forward(정상)는 상시 표시하지 않는다. 끊이지 않는 트래픽이라 늘 켜져 있으면
+      // benign(정상 판정)은 상시 표시하지 않는다. 끊이지 않는 트래픽이라 늘 켜져 있으면
       // 무엇이 지금 일어났는지 알 수 없다. 직전 갱신보다 benign이 늘었을 때만
       // 잠깐 나타났다 사라진다.
       if (pulsingEdgeIds.has(edge.id)) {
-        kinds.push('forward')
+        kinds.push('benign')
       }
       if (edge.counts.cleared > 0) {
         kinds.push('cleared')
@@ -418,9 +495,8 @@ export function TopologyGraph({
       }
 
       kinds.forEach((kind) => {
-        // 사용자가 삭제한 판정 간선은 그리지 않는다. 로그에는 남아 있고, 탐지 이벤트를
-        // 눌러 다시 불러올 수 있다.
-        if (hiddenEdgeKeys.has(`${edge.id}#${kind}`)) {
+        // 피드가 아는 간선이면 켜 둔 것만 그린다. 끄고 켜는 것은 탐지 이벤트에서만 한다.
+        if (!isDrawn(`${edge.id}#${kind}`, activeEdgeKeys, knownEdgeKeys)) {
           return
         }
         // 자기 자신 간선은 서비스 상자가 아니라 **Pod 원 사이**로 잇는다.
@@ -451,7 +527,8 @@ export function TopologyGraph({
     addedEdgeIds,
     selectedEdgeId,
     pulsingEdgeIds,
-    hiddenEdgeKeys,
+    activeEdgeKeys,
+    knownEdgeKeys,
     selfHopPods,
   ])
 
@@ -647,16 +724,6 @@ export function TopologyGraph({
               <span className="verify-plan-title">교차 검증 절차</span>
               <span className="verify-plan-path">{verifyPlan.path}</span>
             </div>
-            {onHideEdge ? (
-              <button
-                type="button"
-                className="verify-plan-hide"
-                title="이 판정을 그래프에서 지웁니다. 로그에는 남아 있고, 같은 경로에 새 판정이 오면 다시 나타납니다."
-                onClick={() => selectedEdgeId && onHideEdge(selectedEdgeId)}
-              >
-                엣지 삭제
-              </button>
-            ) : null}
           </div>
           <ol
             className="verify-plan-list"

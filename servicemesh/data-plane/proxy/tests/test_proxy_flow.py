@@ -33,6 +33,13 @@ class AlwaysMaliciousVerdicts(VerdictStore):
         return Detection(is_malicious=True, score=-0.9)
 
 
+class AlwaysBenignVerdicts(VerdictStore):
+    """모든 세션을 정상으로 판정한다. forward 이벤트 경로를 보기 위한 대역."""
+
+    def get_any(self, session_ids):
+        return Detection(is_malicious=False, score=0.42)
+
+
 class FakeControlPlane:
     """Request Verifier 대역. 질의된 시그니처를 기록한다."""
 
@@ -89,16 +96,23 @@ class FakeBackend:
 
 
 class RecordingTelemetry:
-    """발신된 이벤트를 모아두는 대역. 실제 전송은 하지 않는다."""
+    """발신된 이벤트를 모아두는 대역. 실제 전송은 하지 않는다.
+
+    counts는 실제 TelemetryClient처럼 queue와 무관하게 오른다 — 이벤트를 큐에 넣지
+    않아도 집계는 남는다는 계약을 시험이 확인할 수 있어야 한다.
+    """
 
     def __init__(self):
         self.events = []
+        self.counts = {}
 
-    def emit(self, event):
-        self.events.append(event)
+    def emit(self, event, queue=True):
+        self.counts[event["category"]] = self.counts.get(event["category"], 0) + 1
+        if queue:
+            self.events.append(event)
 
     def incr(self, category, peer=None):
-        pass
+        self.counts[category] = self.counts.get(category, 0) + 1
 
 
 class Harness:
@@ -107,14 +121,18 @@ class Harness:
     def __init__(self, *, backend_body=b'{"content":"normal"}',
                  sibling_body=b'{"content":"normal"}', allow=True,
                  treat_client_as_local=False, always_malicious=False,
+                 always_benign=False, emit_forward=True,
                  verdict_wait=0.0, original_dst_registry=None):
         self._verdict_wait = verdict_wait
+        self._emit_forward = emit_forward
         self.original_dst_registry = original_dst_registry
         self.backend = FakeBackend(backend_body)
         self.sibling = FakeBackend(sibling_body)
         self.control_plane = FakeControlPlane(allow=allow)
         self.peers = PeerRegistry()
-        self.verdicts = (AlwaysMaliciousVerdicts if always_malicious else VerdictStore)(ttl=60.0)
+        store = (AlwaysMaliciousVerdicts if always_malicious
+                 else AlwaysBenignVerdicts if always_benign else VerdictStore)
+        self.verdicts = store(ttl=60.0)
         self._treat_client_as_local = treat_client_as_local
         self.dst = None
         self.port = None
@@ -135,6 +153,7 @@ class Harness:
             else frozenset({POD_IP}),
             verdict_wait=self._verdict_wait,
             verdict_poll=0.01,
+            emit_forward_events=self._emit_forward,
         )
         relay = RelayClient(self.peers, self.sibling.port, timeout=3.0, max_body_bytes=1 << 20)
         self.telemetry = RecordingTelemetry()
@@ -696,3 +715,80 @@ def test_keepalive_두번째_요청도_이상이면_Drop한다():
     drops = [e for e in events if e["verdict"] == "DROP"]
     assert len(drops) == 1
     assert drops[0]["srcPort"] == local_port
+
+
+# --- benign(정상 판정) 이벤트 ------------------------------------------------
+#
+# 정상 트래픽이 집계 숫자로만 남으면 "실제 게시판에서 한 이 조작이 어떻게 판정됐는가"를
+# 로그에서 되짚을 수 없다. 집행 경로에서 HTTP 메시지 1건당 1개를 남긴다.
+
+def test_정상_outbound_요청은_benign_이벤트를_남긴다():
+    async def scenario():
+        h = Harness(treat_client_as_local=True, always_benign=True)
+        await h.start()
+        try:
+            await h.request(GET_POST)
+        finally:
+            await h.stop()
+        return h.telemetry.events
+
+    events = run(scenario())
+    assert events, "정상 판정도 이벤트를 남겨야 한다"
+    event = events[-1]
+    assert event["category"] == "benign"
+    assert event["verdict"] == "FORWARD"
+    # 모델이 정상으로 봤다. ATTACK으로 고정해 보내면 화면이 거짓말을 한다.
+    assert event["modelVerdict"] == "BENIGN"
+    # 교차 검증은 이상 판정에만 돈다 — 통과·실패를 말할 수 없다.
+    assert event["verificationStage"] is None
+    assert event["verificationPassed"] is None
+    assert event["signature"], "어떤 요청이 통과했는지 알 수 있어야 한다"
+
+
+def test_판정이_없으면_benign_이벤트를_남기지_않는다():
+    """윈도우 미충족은 '정상으로 판정했다'가 아니라 '판정하지 못했다'이다."""
+    async def scenario():
+        h = Harness(treat_client_as_local=True)   # 기본 VerdictStore — 판정 없음
+        await h.start()
+        try:
+            await h.request(GET_POST)
+        finally:
+            await h.stop()
+        return h.telemetry.events
+
+    assert run(scenario()) == []
+
+
+def test_스위치를_꺼도_집계는_남는다():
+    """이벤트만 빠진다. 집계까지 빠지면 토폴로지의 평시 경로가 통째로 사라진다."""
+    async def scenario():
+        h = Harness(treat_client_as_local=True, always_benign=True, emit_forward=False)
+        await h.start()
+        try:
+            await h.request(GET_POST)
+        finally:
+            await h.stop()
+        return h.telemetry.events, h.telemetry.counts
+
+    events, counts = run(scenario())
+    assert events == []
+    assert counts.get("benign", 0) >= 1
+
+
+def test_정상_응답도_benign_이벤트를_남긴다():
+    async def scenario():
+        h = Harness(always_benign=True)   # inbound 연결 = outbound 응답 경로
+        await h.start()
+        try:
+            await h.request(GET_POST)
+        finally:
+            await h.stop()
+        return h.telemetry.events
+
+    events = run(scenario())
+    assert events, "정상 응답도 이벤트를 남겨야 한다"
+    event = events[-1]
+    assert event["category"] == "benign"
+    assert event["direction"] is None or event["direction"] in ("REQUEST", "RESPONSE")
+    # 관측 주체는 응답을 보낸 내 Pod이고, 상대는 요청을 보내온 클라이언트다.
+    assert event["srcIp"] == POD_IP

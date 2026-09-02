@@ -97,6 +97,7 @@ async def main():
         verdict_wait=config.VERDICT_WAIT,
         verdict_poll=config.VERDICT_POLL,
         relay_safe_methods=config.RELAY_SAFE_METHODS,
+        emit_forward_events=config.EMIT_FORWARD_EVENTS,
     )
     handler = TrafficHandler(
         handler_config, verdicts, peers, control_plane, relay_client,
@@ -106,7 +107,7 @@ async def main():
     pipeline = DetectionPipeline(
         AfPacketSource(config.SNIFF_IFACE), adapter, verdicts,
         config.TARGET_PORT, config.PROXY_PORT,
-        telemetry=telemetry, original_dst=original_dst_registry,
+        original_dst=original_dst_registry,
     )
     # 캡처를 시작하지 못하면(NET_RAW capability 없음 등) 탐지 스레드가 로그를 남기고
     # 종료한다. 프록시는 Forward 전용으로 계속 동작한다.

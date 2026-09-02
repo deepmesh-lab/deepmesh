@@ -219,6 +219,113 @@ export function GuidePage() {
             입니다. 그래서 판정이 네트워크 왕복 없이 즉시 끝납니다.
           </blockquote>
 
+          {/* ── 5-1. 용어 ────────────────────────────────────── */}
+          <h3>benign · cleared · forward — 셋을 정확히 구분합니다</h3>
+
+          <p>
+            화면에 나오는 말이 세 축에서 옵니다. 축을 섞어 읽으면 반드시 헷갈립니다.
+          </p>
+
+          <div className="guide-table-wrap">
+            <table className="guide-table">
+              <thead>
+                <tr>
+                  <th>축</th>
+                  <th>값</th>
+                  <th>무엇을 말하나</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>모델 판정</td>
+                  <td>
+                    <code>BENIGN</code> / <code>ATTACK</code>
+                  </td>
+                  <td>OCSVM이 이 시퀀스를 어떻게 봤나</td>
+                </tr>
+                <tr>
+                  <td>집행</td>
+                  <td>
+                    <code>FORWARD</code> / <code>DROP</code> / <code>RELAY</code>
+                  </td>
+                  <td>프록시가 실제로 어떻게 했나</td>
+                </tr>
+                <tr>
+                  <td>분류 (화면)</td>
+                  <td>
+                    <code>benign</code> / <code>cleared</code> / <code>drop</code> /{' '}
+                    <code>relay</code>
+                  </td>
+                  <td>위 둘을 합쳐 네 갈래로 나눈 것</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <blockquote className="guide-warn">
+            <b>
+              <code>FORWARD</code>는 <code>benign</code>과 <code>cleared</code>를 둘 다
+              포함합니다.
+            </b>
+            <br />
+            cleared도 결국 전달된 트래픽이기 때문입니다. 그래서 화면의 네 분류에는{' '}
+            <b>forward라는 말을 쓰지 않습니다</b> — 그렇게 쓰면 나란히 놓인 cleared가
+            forward가 아닌 것처럼 읽힙니다. forward는 탐지 이벤트 상세의{' '}
+            <code>verdict</code> 칸에서만 나옵니다.
+          </blockquote>
+
+          <div className="guide-table-wrap">
+            <table className="guide-table">
+              <thead>
+                <tr>
+                  <th>분류</th>
+                  <th>모델</th>
+                  <th>집행</th>
+                  <th>뜻</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <span className="guide-chip benign">benign</span>
+                  </td>
+                  <td>BENIGN</td>
+                  <td>FORWARD</td>
+                  <td>모델이 정상으로 봄. 교차 검증을 돌리지 않음</td>
+                </tr>
+                <tr>
+                  <td>
+                    <span className="guide-chip cleared">cleared</span>
+                  </td>
+                  <td>ATTACK</td>
+                  <td>FORWARD</td>
+                  <td>모델은 이상으로 봤으나 교차 검증이 뒤집음</td>
+                </tr>
+                <tr>
+                  <td>
+                    <span className="guide-chip drop">drop</span>
+                  </td>
+                  <td>ATTACK</td>
+                  <td>DROP</td>
+                  <td>검증도 통과 못 함. 요청을 버림</td>
+                </tr>
+                <tr>
+                  <td>
+                    <span className="guide-chip relay">relay</span>
+                  </td>
+                  <td>ATTACK</td>
+                  <td>RELAY</td>
+                  <td>응답이 참조와 다름. 정상 replica 응답으로 교체</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            네 분류 모두 <b>HTTP 메시지 1건당 1개</b>로 셉니다. 개요 카드의 숫자와 로그
+            조회의 행 수가 같은 단위를 가리킵니다.
+          </p>
+
           {/* ── 6. CLEARED ───────────────────────────────────── */}
           <h3>
             <span className="guide-chip cleared">CLEARED</span> 정상 요청이 통과되는

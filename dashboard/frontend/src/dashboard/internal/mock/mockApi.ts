@@ -167,6 +167,15 @@ function matchesFilter(event: DetectionEventDetail, params: EventListParams) {
       return false
     }
   }
+  if (params.category) {
+    const allowed = params.category
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean)
+    if (allowed.length > 0 && !allowed.includes(event.category)) {
+      return false
+    }
+  }
   if (params.serviceName && event.serviceName !== params.serviceName) {
     return false
   }

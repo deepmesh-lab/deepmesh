@@ -58,10 +58,16 @@ spec:
               mountPath: /etc/nginx/conf.d/default.conf
               subPath: default.conf
               readOnly: true
+          # 프로브를 서비스 포트(80) 밖으로 뺀다. iptables는 TARGET_PORT(80)만
+          # 리다이렉트하므로 이 포트로 오는 kubelet 프로브는 사이드카를 거치지 않는다.
+          # 그대로 두면 10초마다 오는 프로브 응답이 탐지 대상이 되어, 대시보드에
+          # 사라지지 않는 frontend→external 선으로 남는다(트래픽이 아니라 관측 장치다).
+          # 백엔드 3종이 MANAGEMENT_SERVER_PORT로 푼 것과 같은 방법이고, 8081 리스너는
+          # frontend-nginx ConfigMap에 있다.
           readinessProbe:
             httpGet:
-              path: /
-              port: 80
+              path: /healthz
+              port: 8081
             initialDelaySeconds: 10
             periodSeconds: 10
             failureThreshold: 3

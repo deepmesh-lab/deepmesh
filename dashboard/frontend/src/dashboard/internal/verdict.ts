@@ -10,14 +10,43 @@ import type {
 } from './types'
 
 /**
- * 화면 라벨. `cleared`를 "오탐"이라 쓰지 않는 이유는 명세 §판정 분류 체계에 있다 —
+ * 화면 라벨.
+ *
+ * **"forward"는 여기 쓰지 않는다.** 축이 다르다.
+ *
+ *   modelVerdict  BENIGN | ATTACK          모델이 뭐라 했나
+ *   verdict       FORWARD | DROP | RELAY   프록시가 어떻게 집행했나
+ *   category      benign | cleared | drop | relay   화면의 4분류
+ *
+ * `FORWARD`는 benign과 cleared를 **둘 다** 포함한다 — cleared도 전달된 트래픽이다.
+ * 그래서 benign만 "정상 (forward)"이라 부르면, 나란히 놓인 cleared가 forward가
+ * 아닌 것처럼 읽힌다. forward는 상세 대화상자의 verdict 값에서만 쓴다.
+ *
+ * `cleared`를 "오탐"이라 쓰지 않는 이유는 명세 §판정 분류 체계에 있다 —
  * 교차 검증 통과가 트래픽의 정상성을 보증하지는 않는다.
  */
 export const VERDICT_LABEL: Record<VerdictCategory, string> = {
-  benign: '정상 전달 (forward)',
+  benign: '정상 판정 (benign)',
   cleared: '교차 검증 통과 (cleared)',
   drop: '요청 차단 (drop)',
   relay: '응답 대체 (relay)',
+}
+
+/**
+ * 목록 한 줄에 쓰는 판정 설명.
+ *
+ * 백엔드 `summary`를 쓰지 않는다. 거기에는 시그니처가 " — " 뒤에 이어 붙어 있어
+ * 좁은 피드에서는 잘려 나가 읽히지도 않으면서 판정 문구를 밀어낸다. 시그니처는
+ * 상세 대화상자의 '판정 대상' 절이 온전히 보여준다.
+ *
+ * 문구는 백엔드 `IngestService.buildSummary`가 category로 만드는 것과 같다 —
+ * category만 있으면 결정되므로 화면에서 다시 만들어도 어긋나지 않는다.
+ */
+export const VERDICT_SUMMARY: Record<VerdictCategory, string> = {
+  benign: '정상 판정',
+  cleared: '이상 판정 후 교차 검증 통과',
+  drop: '미관측 요청 차단',
+  relay: '응답 변조 탐지·교체',
 }
 
 /**

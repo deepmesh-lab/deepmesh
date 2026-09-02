@@ -143,6 +143,7 @@ public class IngestService {
 			case "drop" -> "미관측 요청 차단 — " + sig;
 			case "relay" -> "응답 변조 탐지·교체 — " + sig;
 			case "cleared" -> "이상 판정 후 교차 검증 통과 — " + sig;
+			case "benign" -> "정상 판정 — " + sig;
 			default -> sig;
 		};
 	}

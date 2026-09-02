@@ -75,3 +75,22 @@ data:
             try_files $uri $uri/ /index.html;
         }
     }
+
+    # kubelet readinessProbe 전용 포트.
+    #
+    # 서비스 포트(80)로 프로브를 받으면 iptables가 그 포트를 사이드카로 리다이렉트하므로,
+    # 10초마다 오는 프로브 응답이 탐지 대상이 된다. 대시보드에 사라지지 않는
+    # frontend→external 선으로 남는데, 그건 트래픽이 아니라 관측 장치다.
+    # 백엔드 3종이 actuator를 8081로 옮겨 푼 것과 같은 방법이다
+    # (k8s/*/deployment-with-sidecar.yaml의 MANAGEMENT_SERVER_PORT).
+    #
+    # iptables.sh는 TARGET_PORT(80)만 PREROUTING REDIRECT하므로 이 포트는 그대로 통과한다.
+    server {
+        listen 8081;
+        server_name _;
+
+        location /healthz {
+            access_log off;
+            return 200 "ok";
+        }
+    }

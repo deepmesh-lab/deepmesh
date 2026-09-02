@@ -147,6 +147,7 @@ export function playScenario1() {
         verificationStage: 'REQUEST_VERIFIER',
         verificationPassed: false,
         detectionLatencyMs: Number((0.52 + Math.random() * 0.25).toFixed(2)),
+        signature: `${path.split(' ')[0]}|10.96.0.1:443|${path.split(' ')[1]}|q:|b:`,
         summary: `${path} — Request Verifier 미관측 요청`,
         modelId: modelIdOf('post'),
         verification: {
@@ -207,6 +208,7 @@ export function playScenario3() {
         verificationStage: 'REQUEST_VERIFIER',
         verificationPassed: true,
         detectionLatencyMs: Number((0.44 + Math.random() * 0.2).toFixed(2)),
+        signature: `DELETE|comment-service:8080|/api/comments|q:postId=${postId}|b:`,
         summary: `DELETE /api/comments?postId=${postId} — 타 replica에 동일 요청 이력 존재, 판정이 뒤집힘`,
         modelId: modelIdOf('post'),
         verification: {
@@ -250,6 +252,7 @@ export function playScenario2() {
         verificationStage: 'RESPONSE_CONSISTENCY',
         verificationPassed: cleared,
         detectionLatencyMs: Number((0.49 + Math.random() * 0.22).toFixed(2)),
+        signature: 'GET|post-service:8080|/api/posts/12|q:|b:',
         summary: cleared
           ? 'GET /api/posts/12 — 참조 응답과 일치, 판정이 뒤집힘'
           : 'GET /api/posts/12 — 응답 본문 불일치, 정상 replica 응답으로 대체',

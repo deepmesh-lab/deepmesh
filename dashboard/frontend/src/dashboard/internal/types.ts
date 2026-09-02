@@ -74,6 +74,12 @@ export type VerificationStage = 'REQUEST_VERIFIER' | 'RESPONSE_CONSISTENCY'
  */
 export type NodeKind =
   | 'SERVICE'
+  /**
+   * 브라우저를 마주보는 진입점(게시판 nginx). 사이드카가 붙어 있어 SERVICE와 관측
+   * 방식·counts 계산은 완전히 같고, 다른 것은 트래픽의 성격이다 — 이 노드의 판정은
+   * 대부분 브라우저에게 보낸 응답이라 상대가 클러스터 밖이다. 아이콘으로만 구분한다.
+   */
+  | 'GATEWAY'
   | 'DATASTORE'
   | 'K8S_API'
   | 'EXTERNAL'
@@ -290,6 +296,12 @@ export type DetectionEvent = {
   /** 나중에 추가된 필드라 그 이전에 쌓인 행에는 값이 없다. */
   detectionLatencyMs: number | null
   summary: string
+  /**
+   * 판정 대상이 된 요청·응답의 시그니처 — `메서드|대상|경로|q:쿼리|b:본문힌트`.
+   *
+   * 어떤 API 호출이 이 판정을 받았는지는 이 값에만 있다. 옛 행에는 없을 수 있다.
+   */
+  signature: string | null
 }
 
 export type EventListResponse = {
@@ -307,6 +319,14 @@ export type EventListParams = {
   size?: number
   /** `FORWARD`|`DROP`|`RELAY`. 콤마 구분 다중 지정 */
   verdict?: string
+  /**
+   * `benign`|`cleared`|`drop`|`relay`. 콤마 구분 다중 지정.
+   *
+   * verdict와 1:1이 아니라 따로 있다 — `FORWARD` 하나에 benign(정상 전달)과
+   * cleared(이상 판정 후 교차 검증 통과)가 모두 들어간다. 화면이 보여주는 것도,
+   * 사용자가 고르는 것도 category다.
+   */
+  category?: string
   serviceName?: string
   podName?: string
   direction?: Direction
@@ -316,11 +336,20 @@ export type EventListParams = {
 
 // ── 1-8. GET /dashboard/events/{eventId} ───────────────────────────────
 
+/**
+ * 패킷 한 줄. **스키마를 고정하지 않는다.**
+ *
+ * 지금 프록시는 packets를 아예 보내지 않는다(`telemetry.build_event`에 항목이 없다).
+ * 나중에 붙을 때 어떤 필드가 올지 여기서 미리 정할 수 없고, 정해 두면 그 외의 필드는
+ * 조용히 버려진다. 그래서 아는 필드만 이름을 달아 두고 나머지는 열어 둔다 —
+ * 화면은 실제로 도착한 키를 전부 그린다.
+ */
 export type PacketMeta = {
-  seq: number
-  capturedAt: IsoDateTime
-  length: number
-  flags: string
+  seq?: number
+  capturedAt?: IsoDateTime
+  length?: number
+  flags?: string
+  [key: string]: unknown
 }
 
 /**

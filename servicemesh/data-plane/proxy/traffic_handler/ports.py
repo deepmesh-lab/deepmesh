@@ -55,6 +55,10 @@ class Detection:
     score: float = 0.0
     # 이 판정을 만드는 데 걸린 모델 추론 시간(ms). 측정 전이면 0.0.
     latency_ms: float = 0.0
+    # 판정에 쓰인 윈도우의 패킷 메타(packets.py). 이상 판정일 때만 채운다 —
+    # 정상 시퀀스는 개별 이벤트로 나가지 않아 실을 곳이 없다. tuple인 이유는
+    # 이 dataclass가 frozen이라서다.
+    packets: tuple = ()
 
 
 # 마지막 패킷의 방향 — Algorithm 1의 요청/응답 분기 기준
@@ -91,6 +95,10 @@ class SessionObservation:
     @property
     def latency_ms(self):
         return self.detection.latency_ms
+
+    @property
+    def packets(self):
+        return self.detection.packets
 
 
 @runtime_checkable

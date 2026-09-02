@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { formatKstTime } from '../internal/time'
-import { edgeKeyOfEvent } from '../internal/verdict'
+import { edgeKeyOfEvent, VERDICT_SUMMARY } from '../internal/verdict'
 import type { DetectionEvent, TopologyEdge } from '../internal/types'
 
 type Props = {
@@ -9,16 +9,21 @@ type Props = {
   edges: TopologyEdge[]
   omittedCount: number
   isLoading: boolean
-  /** 그래프에서 삭제된 간선들. 해당 이벤트는 "다시 불러오기"가 된다. */
-  hiddenEdgeKeys: ReadonlySet<string>
-  /** 항목을 누르면 토폴로지에서 그 통신을 펼친다. 삭제된 것이면 먼저 되살린다. */
-  onReveal: (edgeKey: string) => void
-  /** 그 한 건의 Pod → Pod 경로를 그리기 위해 이벤트 자체도 넘긴다. */
-  onFocusEvent: (event: DetectionEvent | null) => void
+  /** 항목을 누르면 그 통신을 그래프에 올리거나 내린다. */
+  onToggle: (event: DetectionEvent) => void
   /** 원본 응답 보기. 조사 흐름이 대화상자로 끊기지 않게 별도 버튼으로 뺐다. */
   onInspect: (eventId: string) => void
-  /** 지금 토폴로지에 펼쳐져 있는 간선. 같은 간선의 로그를 알아볼 수 있게 표시한다. */
-  selectedEdgeKey: string | null
+  /**
+   * 왼쪽 파란 띠를 붙일 이벤트들 = **지금 토폴로지에 그려져 있는 통신**.
+   *
+   * 기본값은 간선마다 최신 1건이다. 같은 경로의 판정이 수십 건 쌓여도 띠는 한 줄에만
+   * 붙고 그래프에도 한 가닥만 선다. 경로가 다르면 오래된 이벤트라도 각자 자기 간선의
+   * 최신이라 띠가 붙는다.
+   *
+   * 띠의 유무가 곧 "이 통신이 지금 그래프에 있는가"이므로, 꺼진 항목을 흐리게 만들지
+   * 않는다. 로그는 지워진 것이 아니다.
+   */
+  activeEventIds: ReadonlySet<string>
 }
 
 export function DetectionFeed({
@@ -26,11 +31,9 @@ export function DetectionFeed({
   edges,
   omittedCount,
   isLoading,
-  hiddenEdgeKeys,
-  onReveal,
-  onFocusEvent,
+  onToggle,
   onInspect,
-  selectedEdgeKey,
+  activeEventIds,
 }: Props) {
   return (
     <>
@@ -47,22 +50,19 @@ export function DetectionFeed({
             <b>
               {isLoading ? '이벤트를 불러오는 중입니다' : '표시할 탐지 이벤트가 없습니다'}
             </b>
-            모델이 ATTACK으로 판정한 시퀀스만 기록됩니다.
+            판정된 HTTP 메시지 1건당 1개가 기록됩니다.
             <br />
-            정상 트래픽은 위 카드의 집계로만 반영됩니다.
+            개요 카드의 건수와 같은 단위입니다.
           </div>
         ) : (
           events.map((event) => {
+            // 상대를 몰라 간선을 찾지 못하는 이벤트는 그래프에 올릴 수 없다.
             const edgeKey = edgeKeyOfEvent(event, edges)
-            const hidden = edgeKey !== null && hiddenEdgeKeys.has(edgeKey)
-            // 펼쳐진 간선에 속한 로그임을 알린다. 한 건을 눌러도 같은 간선의 로그가
-            // 함께 표시되는데, 그것이 "여러 건을 골랐다"로 읽히지 않도록 배경 대신
-            // 왼쪽 띠만 쓴다.
-            const onEdge = edgeKey !== null && edgeKey === selectedEdgeKey
+            const active = activeEventIds.has(event.eventId)
 
             return (
               <div
-                className={`ev ${hidden ? 'hidden-edge' : ''} ${onEdge ? 'on-edge' : ''}`}
+                className={`ev ${active ? 'focused' : ''}`}
                 key={event.eventId}
               >
                 <button
@@ -72,22 +72,16 @@ export function DetectionFeed({
                   title={
                     edgeKey === null
                       ? '상대 서비스를 알 수 없어 그래프에 표시할 통신이 없습니다.'
-                      : hidden
-                        ? '그래프에서 삭제한 통신입니다. 눌러서 다시 불러옵니다.'
-                        : '토폴로지에서 이 통신을 펼칩니다.'
+                      : active
+                        ? '그래프에서 이 통신을 내립니다.'
+                        : '그래프에 이 통신을 올립니다.'
                   }
-                  onClick={() => {
-                    if (!edgeKey) {
-                      return
-                    }
-                    onReveal(edgeKey)
-                    onFocusEvent(event)
-                  }}
+                  onClick={() => onToggle(event)}
                 >
                   <span className="t">{formatKstTime(event.occurredAt)}</span>
                   {/*
-                    verdict가 아니라 category를 보여준다. 이벤트로 남는 FORWARD는 예외
-                    없이 cleared라서, verdict를 쓰면 "정상 전달"로 오해된다.
+                    verdict가 아니라 category다. FORWARD 하나에 benign과 cleared가
+                    함께 들어가 verdict로는 둘을 가를 수 없다.
                   */}
                   <span className={`badge ${event.category}`}>
                     {event.category.toUpperCase()}
@@ -95,9 +89,8 @@ export function DetectionFeed({
                   <span className="m">
                     <b>
                       {event.serviceName} → {event.peerServiceName ?? '알 수 없음'}
-                      {hidden ? <i className="ev-restore">엣지 삭제됨</i> : null}
                     </b>
-                    <em>{event.summary}</em>
+                    <em>{VERDICT_SUMMARY[event.category]}</em>
                   </span>
                 </button>
 

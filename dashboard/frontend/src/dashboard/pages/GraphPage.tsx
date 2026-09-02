@@ -9,7 +9,7 @@ export function GraphPage() {
    * 이 페이지만의 보기 상태. 개요와 공유하지 않는다 — 한쪽에서 지운 간선이 다른 쪽에서도
    * 사라지면 "왜 없지"가 된다.
    */
-  const edgeView = useEdgeView(topology.edges)
+  const edgeView = useEdgeView(topology.edges, feed.events)
 
   return (
     <div className="page page-full">
@@ -29,11 +29,9 @@ export function GraphPage() {
             edges={topology.edges}
             omittedCount={feed.omittedCount}
             isLoading={feed.isLoading}
-            hiddenEdgeKeys={edgeView.hiddenEdgeKeys}
-            onReveal={edgeView.revealEdge}
-            onFocusEvent={edgeView.focusEvent}
+            onToggle={edgeView.toggleEvent}
             onInspect={openEvent}
-            selectedEdgeKey={edgeView.selectedEdgeKey}
+            activeEventIds={edgeView.activeEventIds}
           />
         </section>
       </div>

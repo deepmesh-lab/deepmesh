@@ -27,6 +27,15 @@ function KindGlyph({ kind }: { kind: NodeKind }) {
           <rect x="6" y="6" width="8" height="8" rx="2" />
         </svg>
       )
+    case 'GATEWAY':
+      // 안팎을 가르는 문. 바깥에서 들어와 한 점을 지나 안으로 퍼지는 모양이다.
+      return (
+        <svg viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M3.4 4.2 V15.8 M16.6 4.2 V15.8" />
+          <path d="M3.4 4.2 H8.2 M3.4 15.8 H8.2 M11.8 4.2 H16.6 M11.8 15.8 H16.6" />
+          <path d="M10 6.6 V13.4 M7.6 10 H12.4" />
+        </svg>
+      )
     case 'EXTERNAL':
       return (
         <svg viewBox="0 0 20 20" aria-hidden="true">

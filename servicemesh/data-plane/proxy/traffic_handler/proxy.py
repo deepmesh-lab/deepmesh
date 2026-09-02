@@ -37,9 +37,14 @@ RELAY = "relay"
 VERDICT_FORWARD = "FORWARD"
 VERDICT_DROP = "DROP"
 VERDICT_RELAY = "RELAY"
+CAT_BENIGN = "benign"
 CAT_CLEARED = "cleared"
 CAT_DROP = "drop"
 CAT_RELAY = "relay"
+# 모델 판정. 이벤트의 category와는 다른 축이다 — BENIGN이면 교차 검증을 돌리지 않았고,
+# ATTACK이면 돌린 결과가 cleared/drop/relay 중 하나다.
+MODEL_BENIGN = "BENIGN"
+MODEL_ATTACK = "ATTACK"
 STAGE_REQUEST = "REQUEST_VERIFIER"
 STAGE_RESPONSE = "RESPONSE_CONSISTENCY"
 
@@ -60,6 +65,8 @@ class HandlerConfig:
     relay_safe_methods: frozenset = field(
         default_factory=lambda: frozenset({"GET", "HEAD", "OPTIONS"})
     )
+    # 정상 판정도 개별 이벤트로 내보낼지 (config.EMIT_FORWARD_EVENTS)
+    emit_forward_events: bool = True
     # 이 주소에서 온 연결은 메인 컨테이너가 낸 것으로 본다(= outbound 요청).
     # 그 외는 외부 클라이언트의 inbound로 본다.
     local_sources: frozenset = None
@@ -142,7 +149,7 @@ class TrafficHandler:
         return asyncio.get_event_loop().time()
 
     def _emit(self, observation, verdict, category, stage, passed, signature,
-              endpoint=None, src_port=None):
+              endpoint=None, src_port=None, model_verdict=MODEL_ATTACK, queue=True):
         """집행 결과를 텔레메트리로 보낸다. telemetry가 없으면 무시.
 
         관측의 5-tuple을 집행 경로가 아는 값으로 바로잡는다. 탐지는 lo에서 프레임을 잡기
@@ -159,8 +166,27 @@ class TrafficHandler:
         if endpoint is not None:
             observation = _with_endpoint(observation, self.config.pod_ip, endpoint, src_port)
         self.telemetry.emit(
-            build_event(observation, verdict, category, stage, passed, signature)
+            build_event(observation, verdict, category, stage, passed, signature,
+                        model_verdict=model_verdict),
+            queue=queue,
         )
+
+    def _emit_benign(self, detection, signature, endpoint, src_port):
+        """모델이 정상으로 본 판정 1건을 남긴다. HTTP 메시지 1건당 1개다.
+
+        판정이 없으면(윈도우 미충족) 아무것도 하지 않는다. 그것은 "정상으로 판정했다"가
+        아니라 "판정하지 못했다"이고, 남기면 modelVerdict가 거짓이 된다.
+
+        stage·passed는 None이다. 교차 검증은 이상 판정에만 돌므로 통과·실패를 말할 수 없다.
+
+        EMIT_FORWARD_EVENTS를 꺼도 **집계는 올린다**(queue=False). 여기서 같이 빼면
+        benign이 통계에서도 사라져 토폴로지의 평시 경로가 통째로 없어진다.
+        """
+        if detection is None or detection.is_malicious:
+            return
+        self._emit(detection, VERDICT_FORWARD, CAT_BENIGN, None, None, signature,
+                   endpoint=endpoint, src_port=src_port, model_verdict=MODEL_BENIGN,
+                   queue=self.config.emit_forward_events)
 
     # -- 진입점 --------------------------------------------------------------
 
@@ -238,6 +264,8 @@ class TrafficHandler:
             self._log(FORWARD, kind + "(검증 통과)", method, target, detection)
             self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_REQUEST, True, signature,
                        endpoint=dst, src_port=peer[1])
+        else:
+            self._emit_benign(detection, signature, dst, peer[1])
 
         upstream_ip = LOCALHOST if dst[0] == self.config.pod_ip else dst[0]
         try:
@@ -300,8 +328,8 @@ class TrafficHandler:
             if request is None:
                 break
             detection = self.verdicts.get_any(sessions)
+            signature = self._signature(request, dst)
             if detection is not None and detection.is_malicious:
-                signature = self._signature(request, dst)
                 if not await self.control_plane.verify(signature):
                     self._log(DROP, "outbound request", request.method, request.target,
                               detection)
@@ -310,6 +338,8 @@ class TrafficHandler:
                     return
                 self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_REQUEST, True,
                            signature, endpoint=dst, src_port=peer[1])
+            else:
+                self._emit_benign(detection, signature, dst, peer[1])
 
     # -- 3번: inbound 연결의 응답 (Relay 경로) -------------------------------
 
@@ -373,6 +403,10 @@ class TrafficHandler:
         # 못 바꾼다.
         detection = await self._await_verdict(sessions)
         if detection is None or not detection.is_malicious:
+            # 정상 응답. 시그니처는 이 응답을 부른 요청의 것이다 — 판정 대상이 무엇인지는
+            # 요청이 말해준다.
+            self._emit_benign(detection, self._signature(request, dst),
+                               peer, self.config.target_port)
             return response, FORWARD
 
         if request.header(RELAY_MARKER):

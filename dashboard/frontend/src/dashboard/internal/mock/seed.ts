@@ -32,7 +32,8 @@ export const MOCK_NODES: MockNodeSeed[] = [
   {
     id: 'frontend',
     serviceName: 'frontend',
-    kind: 'SERVICE',
+    // 게시판 nginx. 브라우저를 마주보는 유일한 노드라 GATEWAY다.
+    kind: 'GATEWAY',
     replicaCount: 2,
     readyReplicaCount: 2,
     proxyEnabled: true,

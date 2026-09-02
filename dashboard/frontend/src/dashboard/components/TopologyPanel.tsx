@@ -38,15 +38,15 @@ export function TopologyPanel({
         onSelectService={openService}
         selectedEdgeKey={edgeView.selectedEdgeKey}
         onSelectEdge={edgeView.selectEdge}
-        hiddenEdgeKeys={edgeView.hiddenEdgeKeys}
-        onHideEdge={edgeView.hideEdge}
+        activeEdgeKeys={edgeView.activeEdgeKeys}
+        knownEdgeKeys={edgeView.knownEdgeKeys}
         focusedEvent={edgeView.focusedEvent}
       />
 
       <div className="legend">
         <span>
           <i style={{ background: 'var(--verdict-benign)' }} />
-          정상 (forward)
+          정상 판정 (benign)
         </span>
         <span>
           <i style={{ background: 'var(--verdict-cleared)' }} />

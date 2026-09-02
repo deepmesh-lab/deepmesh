@@ -33,16 +33,17 @@ public class EventController {
 			@RequestParam(required = false) Long afterId,
 			@RequestParam(required = false) Integer size,
 			@RequestParam(required = false) String verdict,
+			@RequestParam(required = false) String category,
 			@RequestParam(required = false) String serviceName,
 			@RequestParam(required = false) String podName,
 			@RequestParam(required = false) String direction,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to) {
 		return service.list(new EventQuery(cursor, afterId, size, parseVerdicts(verdict),
-				serviceName, podName, direction, from, to));
+				parseVerdicts(category), serviceName, podName, direction, from, to));
 	}
 
-	/** 콤마 구분 다중 지정. 목록과 내려받기가 같은 규칙을 써야 한다. */
+	/** 콤마 구분 다중 지정. verdict·category와 목록·내려받기가 모두 같은 규칙을 쓴다. */
 	private static List<String> parseVerdicts(String verdict) {
 		return verdict == null ? null
 				: Arrays.stream(verdict.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
@@ -68,6 +69,7 @@ public class EventController {
 	@GetMapping("/export")
 	public void export(
 			@RequestParam(required = false) String verdict,
+			@RequestParam(required = false) String category,
 			@RequestParam(required = false) String serviceName,
 			@RequestParam(required = false) String podName,
 			@RequestParam(required = false) String direction,
@@ -80,7 +82,8 @@ public class EventController {
 				"attachment; filename=\"" + exportFilename() + "\"");
 
 		service.exportCsv(new EventQuery(null, null, null, parseVerdicts(verdict),
-				serviceName, podName, direction, from, to), response.getWriter());
+				parseVerdicts(category), serviceName, podName, direction, from, to),
+				response.getWriter());
 	}
 
 	private static String exportFilename() {

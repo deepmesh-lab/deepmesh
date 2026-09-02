@@ -1217,7 +1217,7 @@ code,
 
 /* benign은 평소 회색 점선이고, 트래픽이 도착하는 주기에만 초록 실선으로 바뀐다.
    애니메이션이 꺼진 환경(prefers-reduced-motion)에서는 아래 기본값이 그대로 보인다. */
-.verdict-edge.forward {
+.verdict-edge.benign {
   stroke: var(--verdict-benign);
   stroke-width: 2;
   animation: traffic var(--fd, 1.4s) steps(1, end) infinite;
@@ -1263,7 +1263,7 @@ code,
   fill: var(--color-edge);
 }
 
-.verdict-arrow.forward {
+.verdict-arrow.benign {
   fill: var(--verdict-benign);
   animation: traffic-arrow var(--fd, 1.4s) steps(1, end) infinite;
 }
@@ -1337,7 +1337,7 @@ code,
   font-size: 11px;
 }
 
-.edge-tip.forward {
+.edge-tip.benign {
   border-left-color: var(--verdict-benign);
 }
 
@@ -1371,7 +1371,7 @@ code,
   color: var(--verdict-relay-text);
 }
 
-.edge-tip.forward .tip-kind {
+.edge-tip.benign .tip-kind {
   color: var(--verdict-benign);
 }
 
@@ -1413,22 +1413,6 @@ code,
 
 /* 한 항목 = 본문 버튼(간선 펼치기) + 상세 버튼. 둘을 나눈 이유는 클릭 한 번에
    대화상자가 떠서 조사 흐름이 끊기지 않게 하기 위함이다. */
-.verify-plan-hide {
-  flex: none;
-  font-size: 10.5px;
-  padding: 3px 9px;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: var(--color-surface);
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-
-.verify-plan-hide:hover {
-  border-color: var(--color-danger);
-  color: var(--color-danger);
-}
-
 .ev {
   display: flex;
   align-items: stretch;
@@ -1439,24 +1423,40 @@ code,
   background: var(--color-surface-hover);
 }
 
-/* 펼쳐진 간선에 속한 로그. 배경을 칠하면 "여러 건 선택"으로 읽혀 띠만 쓴다. */
-.ev.on-edge {
+/* 지금 짚어 놓은 한 건. 배경을 칠하면 행 전체가 눌린 것처럼 보여 왼쪽 띠만 쓴다. */
+.ev.focused {
   box-shadow: inset 2px 0 0 var(--color-primary);
 }
 
-/* 그래프에서 삭제한 통신. 로그에는 남아 있고 눌러서 되살린다. */
-.ev.hidden-edge .ev-main {
-  opacity: 0.55;
+
+/* 패킷 표는 프록시가 보내는 필드 수에 따라 넓어진다. 대화상자 본문이 가로로 밀리면
+   안 되므로 표만 자기 안에서 스크롤한다. */
+.pk-scroll {
+  overflow-x: auto;
 }
 
-.ev-restore {
-  font-style: normal;
-  font-size: 9.5px;
-  margin-left: 6px;
-  padding: 1px 6px;
-  border-radius: 999px;
+.pk-raw {
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+.pk-raw summary {
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-family: var(--sans);
+}
+
+.pk-raw pre {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
   background: var(--color-surface-sunken);
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
+  font-size: 10.5px;
+  line-height: 1.5;
 }
 
 .ev-main {
@@ -1526,6 +1526,12 @@ code,
 .badge.cleared {
   background: var(--verdict-cleared-weak);
   color: var(--verdict-cleared);
+}
+
+/* 정상 전달. 판정 배지 중 유일하게 사건이 아니므로 가장 조용해야 한다. */
+.badge.benign {
+  background: var(--verdict-benign-weak);
+  color: var(--verdict-benign);
 }
 
 .ev .m {
@@ -1842,13 +1848,17 @@ td:first-child {
   align-items: flex-end;
 }
 
-/* 필터 버튼 묶음. 필드가 한 줄에 다 들어가면 오른쪽 끝에 붙고,
-   줄바꿈이 일어나도 두 버튼은 절대 갈라지지 않는다. */
+/* 필터 행 아래에 오는 별도 행. 필드 개수와 무관하게 두 버튼이 반반을 차지한다.
+   필드 사이에 끼워 두면 줄바꿈 위치에 따라 버튼이 매번 다른 자리로 튄다. */
 .filter-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
-  margin-left: auto;
-  align-items: center;
+  margin-top: 12px;
+}
+
+.filter-actions .btn {
+  justify-content: center;
 }
 
 .field {
@@ -2123,6 +2133,10 @@ td:first-child {
   color: var(--color-on-primary);
 }
 
+.guide-chip.benign {
+  background: var(--verdict-benign);
+}
+
 .guide-chip.cleared {
   background: var(--verdict-cleared);
 }
@@ -2220,11 +2234,11 @@ td:first-child {
 
   /* 간선 점멸은 장식이 아니라 "지금 트래픽이 흐르는가"를 나타내는 정보다.
      1Hz 안팎이라 광과민성 기준(3Hz)에도 걸리지 않으므로 유지한다. */
-  .verdict-edge.forward {
+  .verdict-edge.benign {
     animation: traffic var(--fd, 1.4s) steps(1, end) infinite !important;
   }
 
-  .verdict-arrow.forward {
+  .verdict-arrow.benign {
     animation: traffic-arrow var(--fd, 1.4s) steps(1, end) infinite !important;
   }
 }
