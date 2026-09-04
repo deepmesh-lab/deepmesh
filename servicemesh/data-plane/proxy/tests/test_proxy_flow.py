@@ -324,7 +324,9 @@ def test_이상_요청이_미관측이면_Drop한다():
             await harness.stop()
 
     data, signatures, forwarded = run(scenario())
-    assert data == b""  # 응답 없이 연결이 닫힌다
+    # 무응답으로 끊지 않는다 — 클라이언트가 '끊긴 연결'로 보고 재시도하면 새 5-tuple에는
+    # 판정이 없어 그대로 통과한다. 403은 재시도 대상이 아니다.
+    assert data.startswith(b"HTTP/1.1 403 Forbidden\r\n")
     assert signatures == ["GET|10.96.0.1:443|/api/v1/secrets|q:|b:"]
     assert forwarded == 0  # 목적지로 나가지 않았다
 
@@ -691,7 +693,7 @@ def test_keepalive_두번째_요청도_이상이면_Drop한다():
 
     first_body, second, events, forwarded, local_port = run(scenario())
     assert b'{"content":"normal"}' == first_body
-    assert second == b""            # 2번째 응답 없이 연결이 닫힌다
+    assert second.startswith(b"HTTP/1.1 403 Forbidden\r\n")  # 2번째는 막혔음을 알린다
     assert forwarded == 1           # 2번째 요청은 목적지로 나가지 않았다
     drops = [e for e in events if e["verdict"] == "DROP"]
     assert len(drops) == 1

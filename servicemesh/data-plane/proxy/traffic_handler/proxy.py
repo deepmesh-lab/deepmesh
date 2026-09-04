@@ -43,6 +43,12 @@ CAT_RELAY = "relay"
 STAGE_REQUEST = "REQUEST_VERIFIER"
 STAGE_RESPONSE = "RESPONSE_CONSISTENCY"
 
+# Drop을 클라이언트에 알리는 응답. 상태 코드 선택에 이유가 있다 — 503·429는 Apache
+# HttpClient의 기본 재시도 전략(DefaultHttpRequestRetryStrategy)과 nginx의
+# proxy_next_upstream이 재시도 대상으로 삼는다. 403은 어느 쪽도 재시도하지 않는다.
+DROP_STATUS = 403
+DROP_BODY = b'{"error":"blocked","reason":"anomalous request dropped by deepmesh"}'
+
 
 @dataclass
 class HandlerConfig:
@@ -234,6 +240,8 @@ class TrafficHandler:
                 self._log(DROP, kind, method, target, detection)
                 self._emit(detection, VERDICT_DROP, CAT_DROP, STAGE_REQUEST, False, signature,
                            endpoint=dst, src_port=peer[1])
+                if is_http:
+                    await self._write_drop(client_writer)
                 return  # Algorithm 1 line 19-20: Drop 후 종료
             self._log(FORWARD, kind + "(검증 통과)", method, target, detection)
             self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_REQUEST, True, signature,
@@ -299,7 +307,9 @@ class TrafficHandler:
             request = await http_message.read_request(reader, self.config.max_body_bytes)
             if request is None:
                 break
-            detection = self.verdicts.get_any(sessions)
+            # 첫 요청과 같은 기준으로 판정을 기다린다. 이미 판정이 있으면 _await_verdict가
+            # 즉시 돌아오므로, 창이 데워진 keep-alive 연결은 대기 비용을 치르지 않는다.
+            detection = await self._await_verdict(sessions)
             if detection is not None and detection.is_malicious:
                 signature = self._signature(request, dst)
                 if not await self.control_plane.verify(signature):
@@ -307,6 +317,7 @@ class TrafficHandler:
                               detection)
                     self._emit(detection, VERDICT_DROP, CAT_DROP, STAGE_REQUEST, False,
                                signature, endpoint=dst, src_port=peer[1])
+                    await self._write_drop(client_writer)
                     return
                 self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_REQUEST, True,
                            signature, endpoint=dst, src_port=peer[1])
@@ -471,6 +482,25 @@ class TrafficHandler:
             ids.add(upstream_side.session_id(self.config.max_sessions))
         return ids
 
+    async def _write_drop(self, writer):
+        """Drop을 명시적 응답으로 알린다.
+
+        응답 없이 연결만 닫으면 클라이언트는 이것을 '서버가 끊은 keep-alive 연결'로
+        읽는다. HTTP 클라이언트는 그 상황을 재시도하도록 만들어져 있고(Apache
+        HttpClient의 재시도 전략, nginx의 proxy_next_upstream), 재시도는 새 연결이라
+        5-tuple이 달라진다. 세션 판정은 5-tuple에 묶여 있으므로 새 세션에는 판정이
+        없고, 검지 창도 비어 있어 verdict_wait 안에 다시 차지 않는다 — 그대로 통과한다.
+        즉 무응답 종료는 Drop을 '한 번 끊고 마는' 집행으로 만든다. 대시보드에는 Drop이
+        찍히는데 요청은 결국 성공하는 증상의 원인이다.
+
+        비HTTP(raw TCP)에는 돌려줄 상태 코드가 없어 종료가 유일한 집행이다.
+        """
+        _write_simple(writer, DROP_STATUS, DROP_BODY)
+        try:
+            await writer.drain()
+        except (ConnectionResetError, BrokenPipeError):
+            pass
+
     def _signature(self, request, dst):
         host = request.header("Host") or "{}:{}".format(dst[0], dst[1])
         return sig.http_signature(
@@ -486,7 +516,8 @@ class TrafficHandler:
 
 
 def _write_simple(writer, status, body):
-    reason = {200: "OK", 400: "Bad Request", 404: "Not Found"}.get(status, "OK")
+    reason = {200: "OK", 400: "Bad Request", 403: "Forbidden",
+              404: "Not Found"}.get(status, "OK")
     head = "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n".format(
         status, reason, len(body)
     )
