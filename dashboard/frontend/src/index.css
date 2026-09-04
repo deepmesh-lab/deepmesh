@@ -1,0 +1,2244 @@
+@import './styles/tokens.css';
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--sans);
+  color: var(--color-text);
+  background: var(--color-bg);
+  font-size: 13px;
+  line-height: 1.5;
+  /* 여백은 .page가 갖는다. 여기 두면 뷰포트를 꽉 채우는 화면에서 스크롤이 생긴다. */
+}
+
+/* 서체는 하나뿐이므로 숫자 정렬만 담당한다 */
+.mono {
+  font-variant-numeric: tabular-nums;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+/* ── header ─────────────────────────────────────────────────────────── */
+
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--color-header-bg);
+  color: var(--color-header-text);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 20px;
+  height: 54px;
+  flex-wrap: wrap;
+}
+
+.top .brand {
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -0.02em;
+  color: var(--color-on-primary);
+  text-decoration: none;
+}
+
+/* ── 값 그대로를 보여주는 것 (API 경로 · null · 코드) ─────────────────
+   서체는 본문과 같다. 회색 배경으로만 구분한다. */
+
+.api,
+code,
+.kv dd .null {
+  /* code 태그의 브라우저 기본값이 monospace라 명시적으로 되돌린다 */
+  font-family: var(--sans);
+  background: var(--code-bg);
+  color: var(--code-text);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  letter-spacing: 0;
+  display: inline-block;
+}
+
+.kv dd .null {
+  color: var(--color-text-subtle);
+}
+
+.sect h4.api {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+  color: var(--code-text);
+}
+
+.top .sel {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  background: var(--color-header-control-bg);
+  color: var(--color-header-text);
+  border: 1px solid var(--color-header-control-border);
+  border-radius: 999px;
+  padding: 5px 10px;
+}
+
+.top .nav {
+  display: flex;
+  gap: 4px;
+}
+
+.top .nav a {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  color: var(--color-header-text-muted);
+  text-decoration: none;
+  padding: 5px 10px;
+  border-radius: 999px;
+}
+
+.top .nav a.active {
+  background: var(--color-header-control-bg);
+  color: var(--color-on-primary);
+}
+
+.top .right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.conn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+
+.conn .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 0 0 var(--color-success-glow);
+  animation: pulse 2.4s infinite;
+}
+
+.conn.reconnecting .dot,
+.conn.stalled .dot {
+  background: var(--color-warning);
+  animation: none;
+}
+
+.conn.disconnected .dot,
+.conn.connecting .dot {
+  background: var(--color-text-subtle);
+  animation: none;
+}
+
+@keyframes pulse {
+  70% {
+    box-shadow: 0 0 0 6px rgba(22, 163, 74, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0);
+  }
+}
+
+.clock {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--color-header-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.clock .tz {
+  color: var(--color-header-text);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-right: 2px;
+}
+
+/* ── 목 ↔ 실제 백엔드 토글 ─────────────────────────────────────────── */
+
+.src-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--sans);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--color-header-control-border);
+  background: var(--color-header-control-bg);
+  color: var(--color-header-text-muted);
+}
+
+.src-toggle:hover {
+  border-color: var(--color-secondary);
+}
+
+.src-toggle .track {
+  width: 26px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--color-header-bg);
+  border: 1px solid var(--color-header-control-border);
+  position: relative;
+  flex: none;
+}
+
+.src-toggle .knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-header-text-muted);
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+
+.src-toggle.live .track {
+  border-color: var(--color-secondary);
+}
+
+.src-toggle.live .knob {
+  transform: translateX(12px);
+  background: var(--color-secondary);
+}
+
+.src-toggle.mock .lbl:first-of-type,
+.src-toggle.live .lbl:last-of-type {
+  color: var(--color-header-text);
+}
+
+.stale {
+  background: var(--color-danger-weak);
+  border-bottom: 1px solid var(--color-danger-border);
+  color: var(--color-danger-strong);
+  font-size: 12px;
+  padding: 9px 20px;
+}
+
+.stale code {
+  font-family: var(--sans);
+  font-size: 11.5px;
+}
+
+/* 연결은 살아 있으나 데이터가 이상한 상태 — 끊김(빨강)과 구분한다 */
+.stale.warn {
+  background: var(--color-warning-weak);
+  border-bottom-color: var(--color-warning-border);
+  color: var(--color-warning-strong);
+}
+
+.stale.warn code {
+  background: var(--color-warning-weak);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+/* ── shell (사이드바 레이아웃) ──────────────────────────────────────── */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.shell-body {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  flex: 1;
+  align-items: start;
+}
+
+.side {
+  position: sticky;
+  top: 54px;
+  align-self: stretch;
+  min-height: calc(100vh - 54px);
+  /* 헤더와 같은 계열이되 한 단계 밝다 */
+  background: var(--color-sidebar-bg);
+  border-right: 1px solid var(--color-header-bg);
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.side ul {
+  list-style: none;
+  display: grid;
+  gap: 2px;
+  padding: 0 8px;
+}
+
+.side a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 6px;
+  color: var(--color-header-text-muted);
+  text-decoration: none;
+  font-size: 12.5px;
+  border-left: 3px solid transparent;
+}
+
+.side a:hover {
+  background: var(--color-sidebar-border);
+  color: var(--color-header-text);
+}
+
+.side a.active {
+  background: var(--color-header-bg);
+  color: var(--color-on-primary);
+  border-left-color: var(--color-secondary);
+  font-weight: 600;
+}
+
+.side .ico svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.side-foot {
+  margin-top: auto;
+  padding: 12px 16px 4px;
+}
+
+.src-chip {
+  font-family: var(--sans);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.src-chip.mock {
+  background: var(--color-header-control-bg);
+  color: var(--color-header-text-muted);
+  border: 1px solid var(--color-header-control-border);
+}
+
+.src-chip.live {
+  background: var(--color-secondary);
+  color: var(--color-on-primary);
+}
+
+.main {
+  min-width: 0;
+}
+
+.page {
+  max-width: 1460px;
+  margin: 0 auto;
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+/* 뷰포트를 정확히 채우는 화면 (그래프 전용). 페이지 자체는 스크롤되지 않는다. */
+.page-full {
+  height: calc(100vh - 54px);
+  max-width: none;
+  align-content: stretch;
+}
+
+.page-full .panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.page-full .topo {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+/* 토폴로지 8 : 탐지 이벤트 2, 같은 높이.
+   행 높이를 정해두지 않으면 이벤트가 쌓이는 만큼 행이 계속 늘어나
+   그래프가 빈 여백 속에 떠 있게 된다. 높이를 고정하고 피드는 안에서 스크롤시킨다. */
+.overview-row {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
+  gap: 14px;
+  height: clamp(440px, 56vh, 760px);
+}
+
+/* 그래프 페이지는 화면 전체를 쓴다. 개요처럼 높이를 고정하면 아래가 남는다. */
+.graph-row {
+  height: 100%;
+  min-height: 0;
+}
+
+/* 판정 추이 : 추론 지연 = 1 : 1 */
+.split-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.overview-row > .panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.overview-row .topo {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+/* 그래프 높이에 맞춰 늘어나되, 넘치면 피드 안에서만 스크롤된다.
+   flex 컨테이너로 둬야 빈 상태 메시지가 남은 높이를 받아 가운데에 설 수 있다. */
+.overview-row .feed {
+  flex: 1;
+  max-height: none;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 이벤트 행은 내용 높이를 유지한다 (flex가 눌러버리지 않도록) */
+.overview-row .feed > .ev {
+  flex: none;
+}
+
+/* 좁은 열에서는 한 줄에 다 넣지 않고 시각·배지 아래로 본문을 내린다 */
+.overview-row .ev {
+  grid-template-columns: 52px 62px;
+  gap: 4px 8px;
+}
+
+.overview-row .ev .m {
+  grid-column: 1 / -1;
+}
+
+.overview-row .empty {
+  padding: 32px 14px;
+}
+
+/* ── layout ─────────────────────────────────────────────────────────── */
+
+.wrap {
+  max-width: 1460px;
+  margin: 0 auto;
+  padding: 18px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.stack {
+  display: grid;
+  gap: 14px;
+}
+
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--r);
+  box-shadow: var(--sh);
+  overflow: hidden;
+}
+
+.ph {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  flex-wrap: wrap;
+}
+
+.ph h2 {
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.ph .ep {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  color: var(--color-text-subtle);
+}
+
+.ph .tools {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.pb {
+  padding: 14px 16px;
+}
+
+/* ── stat card ──────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--r);
+  padding: 13px 14px 14px;
+  box-shadow: var(--sh);
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--color-text-disabled);
+}
+
+.card.benign::before {
+  background: var(--verdict-benign);
+}
+.card.cleared::before {
+  background: var(--verdict-cleared);
+}
+.card.drop::before {
+  background: var(--verdict-drop);
+}
+.card.relay::before {
+  background: var(--verdict-relay);
+}
+
+.card .k {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  color: var(--color-text-subtle);
+  letter-spacing: 0.03em;
+}
+
+.card .n {
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+}
+
+.card .s {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+  margin-top: 3px;
+}
+
+.card.benign .n {
+  color: var(--verdict-benign);
+}
+.card.cleared .n {
+  color: var(--verdict-cleared);
+}
+.card.drop .n {
+  color: var(--verdict-drop);
+}
+.card.relay .n {
+  color: var(--verdict-relay-text);
+}
+
+.card.flash {
+  animation: fl 0.55s ease-out;
+}
+
+@keyframes fl {
+  from {
+    background: var(--color-warning-weak);
+  }
+  to {
+    background: var(--color-surface);
+  }
+}
+
+/* ── buttons ────────────────────────────────────────────────────────── */
+
+.btn {
+  font-size: 11.5px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 5px 12px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.btn:hover {
+  border-color: var(--color-text-subtle);
+  color: var(--color-text);
+}
+
+.btn.drop {
+  border-color: var(--verdict-drop-border);
+  color: var(--verdict-drop);
+}
+
+.btn.relay {
+  border-color: var(--verdict-relay-border);
+  color: var(--verdict-relay-text);
+}
+
+.btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
+  font-weight: 600;
+}
+
+.btn.primary:hover {
+  background: var(--color-primary-strong);
+  color: var(--color-on-primary);
+}
+
+.btn.active {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* ── topology ───────────────────────────────────────────────────────── */
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+}
+
+.legend i {
+  display: inline-block;
+  width: 16px;
+  height: 2.5px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: 3px;
+}
+
+.legend .relayout {
+  margin-left: auto;
+}
+
+.legend i.dash {
+  height: 0;
+  border-top: 2px dashed var(--color-text-disabled);
+  vertical-align: 4px;
+}
+
+.topo {
+  height: 380px;
+  /* 검증 절차 패널을 그래프 위에 띄운다 */
+  position: relative;
+}
+
+
+.topo .react-flow__attribution {
+  display: none;
+}
+
+.topo .react-flow__handle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── 토폴로지 노드 ────────────────────────────────────────────────
+   프록시가 붙은 Pod = 원, 감시 대상이 아닌 노드 = 사각형(모서리만 살짝) */
+
+.svc-group {
+  width: 100%;
+  height: 100%;
+  border: 1.5px solid var(--color-border-strong);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  cursor: pointer;
+}
+
+.svc-group.HEALTHY {
+  border-color: var(--color-success);
+}
+
+.svc-group.COMPROMISED {
+  border-color: var(--verdict-drop);
+  background: color-mix(in srgb, var(--verdict-drop-weak) 80%, transparent);
+}
+
+.svc-group.DEGRADED {
+  border-color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning-weak) 80%, transparent);
+}
+
+.svc-group-head {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.svc-group-head .glyph svg {
+  width: 13px;
+  height: 13px;
+  display: block;
+  fill: none;
+  stroke: var(--color-text-muted);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.svc-group-head .name {
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.svc-group.COMPROMISED .svc-group-head .name {
+  color: var(--verdict-drop);
+}
+
+/* Pod — 원 */
+.pod-node {
+  width: 96px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-left: 6px;
+}
+
+.pod-node .disc {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 2px solid var(--color-success);
+  box-shadow: var(--sh);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--verdict-drop);
+}
+
+.pod-node.COMPROMISED .disc {
+  border-color: var(--verdict-drop);
+  background: var(--verdict-drop-weak);
+}
+
+.pod-node.DEGRADED .disc {
+  border-color: var(--color-warning);
+  background: var(--color-warning-weak);
+}
+
+.pod-node .pod-name {
+  font-size: 9.5px;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pod-node.COMPROMISED .pod-name {
+  color: var(--verdict-drop);
+  font-weight: 700;
+}
+
+/* Control Plane 그룹은 서비스와 같은 모양이되 브랜드 색으로 구분한다 */
+.svc-group.CONTROL_PLANE {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary-weak) 85%, transparent);
+}
+
+.svc-group.CONTROL_PLANE .svc-group-head .name {
+  color: var(--color-primary-strong);
+}
+
+.svc-group.CONTROL_PLANE .svc-group-head .glyph svg {
+  stroke: var(--color-primary);
+}
+
+/* Control Plane 구성요소 — Pod가 아니므로 원이 아니라 사각형 블록 */
+.component-node {
+  width: 148px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: 1.5px solid var(--color-primary);
+  border-radius: 5px;
+  background: var(--color-surface);
+  box-shadow: var(--sh);
+}
+
+.component-name {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--color-primary-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 구성요소 설명 */
+.component-tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  width: 250px;
+  z-index: 20;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--r);
+  box-shadow: 0 6px 20px var(--color-shadow);
+  padding: 9px 11px;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.component-tip .tip-head {
+  font-weight: 700;
+  font-size: 11.5px;
+  color: var(--color-primary-strong);
+  margin-bottom: 3px;
+}
+
+.component-tip .tip-foot {
+  color: var(--color-text-muted);
+  line-height: 1.55;
+}
+
+/* ── 교차 검증 과정 (판정 간선을 클릭했을 때만) ──────────────────────── */
+
+/* 네 단계가 같은 통로를 지난다. 한꺼번에 같은 굵기로 그리면 구분이 안 되므로
+   짚고 있는 단계만 선명하게 흐르고 나머지는 흔적만 남긴다. */
+.verify-edge {
+  fill: none;
+  pointer-events: none;
+  stroke-width: 1.4;
+  /* 점선 간격은 모든 단계가 같다. 구분은 순차 강조가 맡는다. */
+  stroke-dasharray: 7 5;
+  opacity: 0.16;
+  transition:
+    opacity 0.25s ease,
+    stroke-width 0.25s ease;
+}
+
+.verify-edge.live {
+  stroke-width: 2.6;
+  opacity: 1;
+}
+
+.verify-edge.cleared {
+  stroke: var(--verdict-cleared);
+}
+
+.verify-edge.drop {
+  stroke: var(--verdict-drop);
+}
+
+.verify-edge.relay {
+  stroke: var(--verdict-relay);
+}
+
+/* 흐르는 거리는 점선 주기(7+5)의 배수여야 한 바퀴 돌 때 튀지 않는다. */
+.verify-edge.live {
+  animation: verify-march 0.75s linear infinite;
+}
+
+@keyframes verify-march {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+/* ── 검증 절차 패널 ───────────────────────────────────────────────
+   선 위에는 번호만 찍고, 무슨 단계인지는 여기서 읽는다. */
+
+.verify-plan {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 5;
+  width: 286px;
+  padding: 10px 12px 9px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-border-strong);
+  border-radius: 8px;
+  box-shadow: var(--sh);
+}
+
+.verify-plan.cleared {
+  border-left-color: var(--verdict-cleared);
+}
+
+.verify-plan.drop {
+  border-left-color: var(--verdict-drop);
+}
+
+.verify-plan.relay {
+  border-left-color: var(--verdict-relay);
+}
+
+/* 제목·경로는 왼쪽에 쌓고, 삭제 버튼은 카드 우측 상단에 붙인다. */
+.verify-plan-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+
+.verify-plan-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.verify-plan-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.verify-plan-path {
+  font-size: 10.5px;
+  color: var(--color-text-muted);
+}
+
+.verify-plan-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.verify-plan-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+  cursor: default;
+  transition: background 0.2s ease;
+}
+
+.verify-plan-list li.on {
+  background: var(--color-surface-sunken);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.verify-plan-list b {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--color-on-primary);
+  opacity: 0.35;
+}
+
+.verify-plan-list li.on b {
+  opacity: 1;
+}
+
+.verify-plan.cleared .verify-plan-list b {
+  background: var(--verdict-cleared);
+}
+
+.verify-plan.drop .verify-plan-list b {
+  background: var(--verdict-drop);
+}
+
+.verify-plan.relay .verify-plan-list b {
+  background: var(--verdict-relay);
+}
+
+.verify-plan-foot {
+  margin-top: 7px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--color-text-disabled);
+}
+
+.verify-step {
+  position: absolute;
+  /* 올려놓으면 설명이 펼쳐져야 하므로 마우스를 받는다 */
+  pointer-events: auto;
+  z-index: 1400;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-on-primary);
+  /* 번호끼리 붙어도 서로 구분되도록 늘 흰 테를 두른다 */
+  box-shadow:
+    0 0 0 2px var(--color-surface),
+    var(--sh);
+  cursor: help;
+  transition:
+    opacity 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.verify-step-label {
+  display: none;
+  position: absolute;
+  left: 26px;
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 3px 9px;
+  box-shadow: var(--sh);
+}
+
+.verify-step.dim {
+  opacity: 0.3;
+}
+
+/* 짚고 있는 단계는 테를 더 두껍게 둘러 선 위에서도 또렷하게 뜬다 */
+.verify-step.live {
+  box-shadow:
+    0 0 0 4px var(--color-surface),
+    var(--sh);
+}
+
+.verify-step:hover {
+  z-index: 1500;
+  opacity: 1;
+}
+
+.verify-step:hover .verify-step-label {
+  display: block;
+}
+
+.verify-step.cleared {
+  background: var(--verdict-cleared);
+}
+
+.verify-step.drop {
+  background: var(--verdict-drop);
+}
+
+.verify-step.relay {
+  background: var(--verdict-relay);
+}
+
+/* 선택된 판정 간선은 굵게 남는다 */
+.verdict-edge.selected {
+  stroke-width: 4;
+  opacity: 1;
+}
+
+.verdict-edge-hit.inspectable {
+  cursor: pointer;
+}
+
+/* 감시 대상이 아닌 노드 — 사각형, 모서리만 살짝 */
+.plain-node {
+  width: 104px;
+  height: 92px;
+  border: 1.5px dashed var(--color-border-strong);
+  border-radius: 3px;
+  background: var(--color-surface-sunken);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.plain-node:hover {
+  border-color: var(--color-text-subtle);
+}
+
+.plain-node .glyph svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+  fill: none;
+  stroke: var(--color-text-subtle);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.plain-node .name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.plain-node .meta {
+  font-size: 9px;
+  color: var(--color-text-subtle);
+}
+
+/* 줌 컨트롤 · 격자 토글 */
+/* 라벨 레이어를 간선보다 앞에 둔다 */
+.topo .react-flow__edgelabel-renderer {
+  z-index: 1300;
+}
+
+.topo .react-flow__controls {
+  box-shadow: var(--sh);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.topo .react-flow__controls-button {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
+  width: 24px;
+  height: 24px;
+}
+
+.topo .react-flow__controls-button svg {
+  fill: var(--color-text-muted);
+}
+
+.topo .react-flow__controls-button:hover {
+  background: var(--color-surface-sunken);
+}
+
+.grid-toggle {
+  box-shadow: var(--sh);
+}
+
+/* ── 토폴로지 간선 ────────────────────────────────────────────────
+   노드끼리 직선으로 잇고, 판정은 라벨이 아니라 색으로 구분한다.
+   drop·relay가 생기면 같은 경로 위에 나란한 선이 하나씩 더 생긴다. */
+
+.verdict-edge {
+  pointer-events: none;
+  fill: none;
+  stroke-linecap: round;
+}
+
+/* 경로는 있으나 집계 구간에 트래픽이 없다 — 회색 점선, 움직이지 않는다 */
+.verdict-edge.idle {
+  stroke: var(--color-edge);
+  stroke-width: 1.6;
+  stroke-dasharray: 4 6;
+}
+
+/* benign은 평소 회색 점선이고, 트래픽이 도착하는 주기에만 초록 실선으로 바뀐다.
+   애니메이션이 꺼진 환경(prefers-reduced-motion)에서는 아래 기본값이 그대로 보인다. */
+.verdict-edge.benign {
+  stroke: var(--verdict-benign);
+  stroke-width: 2;
+  animation: traffic var(--fd, 1.4s) steps(1, end) infinite;
+}
+
+@keyframes traffic {
+  0% {
+    stroke: var(--color-edge);
+    stroke-width: 1.6;
+    stroke-dasharray: 4 6;
+  }
+  50% {
+    stroke: var(--verdict-benign);
+    stroke-width: 2;
+    stroke-dasharray: none;
+  }
+}
+
+.verdict-edge.cleared {
+  stroke: var(--verdict-cleared);
+  stroke-width: 2.4;
+}
+
+.verdict-edge.drop {
+  stroke: var(--verdict-drop);
+  stroke-width: 2.6;
+}
+
+.verdict-edge.relay {
+  stroke: var(--verdict-relay);
+  stroke-width: 2.6;
+}
+
+.verdict-edge.hovered {
+  stroke-width: 4;
+  opacity: 1;
+}
+
+/* 화살촉. 선과 같은 상태를 따라가야 해서 marker가 아니라 path로 그린다. */
+.verdict-arrow {
+  stroke: none;
+  pointer-events: none;
+  fill: var(--color-edge);
+}
+
+.verdict-arrow.benign {
+  fill: var(--verdict-benign);
+  animation: traffic-arrow var(--fd, 1.4s) steps(1, end) infinite;
+}
+
+.verdict-arrow.cleared {
+  fill: var(--verdict-cleared);
+}
+
+.verdict-arrow.drop {
+  fill: var(--verdict-drop);
+}
+
+.verdict-arrow.relay {
+  fill: var(--verdict-relay);
+}
+
+/* 트래픽이 흐르지 않는 위상에서는 화살촉도 회색이어야 한다 */
+@keyframes traffic-arrow {
+  0% {
+    fill: var(--color-edge);
+  }
+  50% {
+    fill: var(--verdict-benign);
+  }
+}
+
+.verify-arrow {
+  stroke: none;
+  pointer-events: none;
+  opacity: 0.16;
+  transition: opacity 0.25s ease;
+}
+
+.verify-arrow.live {
+  opacity: 1;
+}
+
+.verify-arrow.cleared {
+  fill: var(--verdict-cleared);
+}
+
+.verify-arrow.drop {
+  fill: var(--verdict-drop);
+}
+
+.verify-arrow.relay {
+  fill: var(--verdict-relay);
+}
+
+/* 얇은 선은 마우스로 짚기 어렵다. 투명한 두꺼운 선이 hover를 받는다. */
+.verdict-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 18;
+  cursor: help;
+  pointer-events: stroke;
+}
+
+/* 간선 위에 뜨는 설명 */
+.edge-tip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 10;
+  min-width: 168px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-edge);
+  border-radius: var(--r);
+  box-shadow: 0 6px 20px var(--color-shadow);
+  padding: 9px 11px;
+  font-size: 11px;
+}
+
+.edge-tip.benign {
+  border-left-color: var(--verdict-benign);
+}
+
+.edge-tip.cleared {
+  border-left-color: var(--verdict-cleared);
+}
+
+.edge-tip.drop {
+  border-left-color: var(--verdict-drop);
+}
+
+.edge-tip.relay {
+  border-left-color: var(--verdict-relay);
+}
+
+.edge-tip .tip-head {
+  font-weight: 700;
+  font-size: 11.5px;
+}
+
+.edge-tip .tip-kind {
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
+}
+
+.edge-tip.drop .tip-kind {
+  color: var(--verdict-drop);
+}
+
+.edge-tip.relay .tip-kind {
+  color: var(--verdict-relay-text);
+}
+
+.edge-tip.benign .tip-kind {
+  color: var(--verdict-benign);
+}
+
+.edge-tip.cleared .tip-kind {
+  color: var(--verdict-cleared);
+}
+
+.edge-tip .tip-counts {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1px 10px;
+  border-top: 1px solid var(--color-border-subtle);
+  padding-top: 5px;
+}
+
+.edge-tip .tip-counts dt {
+  color: var(--color-text-subtle);
+}
+
+.edge-tip .tip-counts dd {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.edge-tip .tip-foot {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--color-border-subtle);
+  color: var(--color-text-subtle);
+  font-size: 10px;
+}
+
+/* ── feed ───────────────────────────────────────────────────────────── */
+
+.feed {
+  max-height: 404px;
+  overflow-y: auto;
+}
+
+/* 한 항목 = 본문 버튼(간선 펼치기) + 상세 버튼. 둘을 나눈 이유는 클릭 한 번에
+   대화상자가 떠서 조사 흐름이 끊기지 않게 하기 위함이다. */
+.ev {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.ev:hover {
+  background: var(--color-surface-hover);
+}
+
+/* 지금 짚어 놓은 한 건. 배경을 칠하면 행 전체가 눌린 것처럼 보여 왼쪽 띠만 쓴다. */
+.ev.focused {
+  box-shadow: inset 2px 0 0 var(--color-primary);
+}
+
+
+/* 패킷 표는 프록시가 보내는 필드 수에 따라 넓어진다. 대화상자 본문이 가로로 밀리면
+   안 되므로 표만 자기 안에서 스크롤한다. */
+.pk-scroll {
+  overflow-x: auto;
+}
+
+.pk-raw {
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+.pk-raw summary {
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-family: var(--sans);
+}
+
+.pk-raw pre {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  background: var(--color-surface-sunken);
+  color: var(--color-text-muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.ev-main {
+  display: grid;
+  grid-template-columns: 56px 66px 1fr;
+  gap: 9px;
+  padding: 9px 4px 9px 16px;
+  cursor: pointer;
+  align-items: baseline;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: 0;
+}
+
+.ev-inspect {
+  align-self: center;
+  margin-right: 12px;
+  flex: none;
+}
+
+.ev.new {
+  animation: sl 0.4s ease-out;
+}
+
+@keyframes sl {
+  from {
+    opacity: 0;
+    transform: translateY(-7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ev .t {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  color: var(--color-text-subtle);
+}
+
+.badge {
+  font-family: var(--sans);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 3px 0;
+  text-align: center;
+  border-radius: 999px;
+  display: block;
+}
+
+/* 배지는 verdict가 아니라 category를 표시한다. 이벤트로 남는 FORWARD는 예외 없이
+   cleared라서, verdict를 보여주면 "정상 전달"로 오해된다. */
+.badge.drop {
+  background: var(--verdict-drop-weak);
+  color: var(--verdict-drop);
+}
+
+.badge.relay {
+  background: var(--verdict-relay-weak);
+  color: var(--verdict-relay-text);
+}
+
+.badge.cleared {
+  background: var(--verdict-cleared-weak);
+  color: var(--verdict-cleared);
+}
+
+/* 정상 전달. 판정 배지 중 유일하게 사건이 아니므로 가장 조용해야 한다. */
+.badge.benign {
+  background: var(--verdict-benign-weak);
+  color: var(--verdict-benign);
+}
+
+.ev .m {
+  min-width: 0;
+}
+
+.ev .m b {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.ev .m em {
+  display: block;
+  font-style: normal;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  margin-top: 2px;
+  font-family: var(--sans);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty {
+  padding: 48px 20px;
+  text-align: center;
+  color: var(--color-text-subtle);
+  font-size: 12px;
+  line-height: 1.7;
+  /* 패널이 늘어나도 메시지는 가운데 높이에 머문다 */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.empty b {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  margin-bottom: 5px;
+}
+
+.omitted {
+  padding: 8px 16px;
+  background: var(--color-warning-weak);
+  border-bottom: 1px solid var(--color-warning-border);
+  font-size: 11.5px;
+  color: var(--color-warning-strong);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ── table ──────────────────────────────────────────────────────────── */
+
+th {
+  font-family: var(--sans);
+  font-size: 10px;
+  color: var(--color-text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: right;
+  padding: 0 0 8px;
+  font-weight: 600;
+}
+
+th:first-child {
+  text-align: left;
+}
+
+td {
+  padding: 8px 0;
+  border-top: 1px solid var(--color-border-subtle);
+  text-align: right;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+td:first-child {
+  text-align: left;
+  font-weight: 700;
+  font-family: var(--sans);
+  font-size: 12.5px;
+}
+
+.sbar {
+  display: flex;
+  height: 5px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--color-border-subtle);
+  margin-top: 5px;
+  max-width: 190px;
+}
+
+.sbar i {
+  display: block;
+  height: 100%;
+}
+
+.mute {
+  color: var(--color-text-disabled);
+}
+
+/* ── 대화상자 ───────────────────────────────────────────────────── */
+
+.modal-scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--color-scrim);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  animation: fade 0.15s ease-out;
+}
+
+.modal {
+  background: var(--color-surface);
+  border-radius: var(--r);
+  box-shadow: 0 18px 48px var(--color-shadow);
+  width: min(720px, 100%);
+  /* 내용이 적어도 높이가 흔들리지 않게 처음부터 최대 높이로 연다 */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: rise 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modal-body {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+.dh {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  padding: 14px 17px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: none;
+}
+
+.dh h3 {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.dh .x {
+  margin-left: auto;
+  color: var(--color-text-subtle);
+  font-size: 17px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 6px;
+}
+
+.dh .x:hover {
+  background: var(--color-surface-sunken);
+  color: var(--color-text);
+}
+
+.sect {
+  padding: 14px 17px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.sect h4 {
+  font-family: var(--sans);
+  font-size: 10px;
+  color: var(--color-text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 9px;
+  font-weight: 600;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 5px 10px;
+  font-size: 11.5px;
+}
+
+.kv dt {
+  font-family: var(--sans);
+  color: var(--color-text-subtle);
+  font-size: 10.5px;
+}
+
+.kv dd {
+  font-family: var(--sans);
+  word-break: break-all;
+  font-variant-numeric: tabular-nums;
+}
+
+.kv dd .null {
+  color: var(--color-text-subtle);
+}
+
+.note {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--r);
+  padding: 10px 12px;
+  margin-top: 10px;
+  line-height: 1.6;
+}
+
+.note code {
+  font-family: var(--sans);
+  font-size: 11px;
+  background: var(--color-border-subtle);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.pk td,
+.pk th {
+  padding: 4px 0;
+  font-size: 10.5px;
+}
+
+/* ── toast ──────────────────────────────────────────────────────────── */
+
+.toasts {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 60;
+  display: grid;
+  gap: 9px;
+  width: min(330px, calc(100% - 36px));
+}
+
+.toast {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--verdict-drop);
+  border-radius: var(--r);
+  padding: 11px 13px;
+  box-shadow: 0 6px 20px rgba(0, 48, 77, 0.14);
+  animation: pop 0.3s ease-out;
+  cursor: pointer;
+  text-align: left;
+}
+
+.toast.MEDIUM {
+  border-left-color: var(--verdict-relay);
+}
+
+.toast .th {
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--verdict-drop);
+}
+
+.toast.MEDIUM .th {
+  color: var(--verdict-relay-text);
+}
+
+.toast .tt {
+  font-size: 12.5px;
+  font-weight: 700;
+  margin: 3px 0;
+}
+
+.toast .tm {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── filters (이력 조회) ────────────────────────────────────────────── */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+/* 필터 행 아래에 오는 별도 행. 필드 개수와 무관하게 두 버튼이 반반을 차지한다.
+   필드 사이에 끼워 두면 줄바꿈 위치에 따라 버튼이 매번 다른 자리로 튄다. */
+.filter-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.filter-actions .btn {
+  justify-content: center;
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+}
+
+.field label {
+  font-family: var(--sans);
+  font-size: 10px;
+  color: var(--color-text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.field input,
+.field select {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  min-width: 150px;
+}
+
+.chips {
+  display: flex;
+  gap: 5px;
+}
+
+.history-row {
+  cursor: pointer;
+}
+
+.history-row:hover td {
+  background: var(--color-surface-hover);
+}
+
+.history td:first-child {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.foot {
+  max-width: 1460px;
+  margin: 14px auto 0;
+  padding: 0 18px;
+  font-size: 11.5px;
+  color: var(--color-text-subtle);
+  line-height: 1.7;
+}
+
+.foot code {
+  font-family: var(--sans);
+}
+
+.center {
+  padding: 24px;
+  text-align: center;
+  color: var(--color-text-subtle);
+  font-size: 12px;
+}
+
+@media (max-width: 1120px) {
+  .cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 580px) {
+  .cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .wrap {
+    padding: 12px;
+  }
+  .top {
+    height: auto;
+    padding: 10px 14px;
+  }
+}
+
+/* ── 동작 원리 안내 페이지 ────────────────────────────────────────
+   처음 보는 사람이 읽는 문서다. 대시보드의 조밀한 밀도 대신
+   본문 폭을 좁히고 줄간격을 넉넉히 준다. */
+
+.guide {
+  padding: 20px 24px 32px;
+  max-width: 800px;
+  margin: 0 auto;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--color-text);
+  /* 한글이 단어 중간에서 잘리지 않게 띄어쓰기 단위로 줄을 바꾼다 */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.guide h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 30px 0 10px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.guide h3:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.guide p {
+  margin: 9px 0;
+}
+
+.guide code {
+  font-family: var(--sans);
+  font-size: 12px;
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* 핵심 아이디어 — 페이지에서 가장 먼저 눈에 들어와야 한다 */
+.guide-idea {
+  margin: 14px 0;
+  padding: 16px 18px;
+  background: var(--color-primary-weak);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--r);
+  font-size: 13.5px;
+  line-height: 1.8;
+  color: var(--color-primary-strong);
+}
+
+.guide-warn {
+  margin: 14px 0;
+  padding: 13px 16px;
+  background: var(--color-surface-sunken);
+  border-left: 3px solid var(--color-warning);
+  border-radius: var(--r);
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--color-text-muted);
+}
+
+.guide-note {
+  margin: 14px 0;
+  padding: 11px 14px;
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--r);
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+}
+
+/* 등장인물 카드 */
+.guide-cast {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.guide-card {
+  padding: 13px 15px;
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border);
+  border-radius: var(--r);
+}
+
+.guide-card h4 {
+  margin-bottom: 5px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--color-primary-strong);
+}
+
+.guide-card p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
+/* 단계별 시나리오 */
+.guide-steps {
+  list-style: none;
+  margin: 14px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.guide-steps li {
+  display: flex;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.guide-steps li:last-child {
+  border-bottom: none;
+}
+
+.guide-step-no {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.guide-step-body {
+  min-width: 0;
+}
+
+.guide-step-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  margin-bottom: 1px;
+}
+
+.guide-step-body p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
+.guide-step-detail {
+  margin-top: 5px !important;
+  padding-left: 10px;
+  border-left: 2px solid var(--color-border);
+  font-size: 12px !important;
+  color: var(--color-text-subtle) !important;
+}
+
+/* 판정 배지 — 그래프의 간선 색과 같은 값을 쓴다 */
+.guide-chip {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-on-primary);
+}
+
+.guide-chip.benign {
+  background: var(--verdict-benign);
+}
+
+.guide-chip.cleared {
+  background: var(--verdict-cleared);
+}
+
+.guide-chip.drop {
+  background: var(--verdict-drop);
+}
+
+.guide-chip.relay {
+  background: var(--verdict-relay);
+}
+
+.guide-chip.wait {
+  background: var(--color-text-subtle);
+}
+
+/* 장부 예시 */
+.guide-code {
+  margin: 12px 0;
+  padding: 13px 16px;
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--r);
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1.85;
+  color: var(--color-text-muted);
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.guide-table-wrap {
+  margin: 14px 0;
+  overflow-x: auto;
+}
+
+.guide-table {
+  width: 100%;
+  min-width: 460px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.guide-table th,
+.guide-table td {
+  padding: 9px 12px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--color-border-subtle);
+  line-height: 1.65;
+}
+
+.guide-table th {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-subtle);
+  background: var(--color-surface-hover);
+  white-space: nowrap;
+}
+
+.guide-table td:first-child {
+  color: var(--color-text);
+}
+
+.guide-table td {
+  color: var(--color-text-muted);
+}
+
+.guide-limits {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
+.guide-limits b {
+  color: var(--color-text);
+}
+
+@media (max-width: 720px) {
+  .guide {
+    padding: 16px 16px 26px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  /* 간선 점멸은 장식이 아니라 "지금 트래픽이 흐르는가"를 나타내는 정보다.
+     1Hz 안팎이라 광과민성 기준(3Hz)에도 걸리지 않으므로 유지한다. */
+  .verdict-edge.benign {
+    animation: traffic var(--fd, 1.4s) steps(1, end) infinite !important;
+  }
+
+  .verdict-arrow.benign {
+    animation: traffic-arrow var(--fd, 1.4s) steps(1, end) infinite !important;
+  }
+}

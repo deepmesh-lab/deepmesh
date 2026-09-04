@@ -51,7 +51,7 @@ public class StatsService {
 
 		return new SummaryResponse(
 				range.label(), now(), total, benign, cleared, drop, relay,
-				attackRate(total, cleared, drop, relay), blockRate(total, drop, relay),
+				anomalyRate(total, cleared, drop, relay), blockRate(total, drop, relay),
 				avg(latencies), percentile(latencies, 95),
 				(int) buckets.stream().map(StatsBucket::getServiceName).distinct().count(),
 				(int) buckets.stream().map(StatsBucket::getPodName).distinct().count());
@@ -71,7 +71,7 @@ public class StatsService {
 			long relay = list.stream().mapToLong(StatsBucket::getRelay).sum();
 			long total = benign + cleared + drop + relay;
 			rows.add(new ByServiceResponse.Row(service, total, benign, cleared, drop, relay,
-					attackRate(total, cleared, drop, relay), blockRate(total, drop, relay)));
+					anomalyRate(total, cleared, drop, relay), blockRate(total, drop, relay)));
 		});
 		// 문제가 있는 서비스가 맨 위로 — blockRate DESC, 동률이면 total DESC
 		rows.sort(Comparator.comparingDouble(ByServiceResponse.Row::blockRate)
@@ -185,7 +185,14 @@ public class StatsService {
 		return OffsetDateTime.now(clock);
 	}
 
-	private double attackRate(long total, long cleared, long drop, long relay) {
+	/**
+	 * 모델이 이상하다고 판정한 비율. 명세의 {@code attackRate}를 이름만 바꾼 값이다.
+	 *
+	 * <p>분자에 {@code cleared}가 들어간다 — 교차 검증이 "공격 아니다"로 뒤집은 건까지
+	 * 센다. 그래서 "공격률"이 아니라 "이상 판정률"이다. 실제로 집행된 비율은
+	 * {@link #blockRate}다.
+	 */
+	private double anomalyRate(long total, long cleared, long drop, long relay) {
 		return total == 0 ? 0.0 : (double) (cleared + drop + relay) / total;
 	}
 

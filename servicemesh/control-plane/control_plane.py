@@ -41,6 +41,8 @@ SIDECAR_CONTAINER = os.environ.get("SIDECAR_CONTAINER", "reverse-proxy")
 SIGNATURE_TTL = int(os.environ.get("SIGNATURE_TTL", "600"))
 
 CLEANUP_INTERVAL = 60
+# 레지스트리에 없는 Pod을 만났을 때 즉시 갱신을 허용하는 최소 간격(초).
+REFRESH_MIN_INTERVAL = 2.0
 PUSH_TIMEOUT = aiohttp.ClientTimeout(total=3)
 dumps_kr = functools.partial(json.dumps, ensure_ascii=False)
 
@@ -53,9 +55,24 @@ class PodInfoProvider:
         self.registry = {}          # {서비스: [{"name": ..., "ip": ...}, ...]}
         self._ip_to_service = {}    # {Pod IP: 서비스}
         self._last_snapshot = None  # 변경 시에만 로그를 남기기 위한 직전 상태
+        self._last_refresh = 0.0    # refresh_if_stale 스로틀
 
     def service_of(self, pod_ip):
         return self._ip_to_service.get(pod_ip)
+
+    async def refresh_if_stale(self, min_interval=REFRESH_MIN_INTERVAL):
+        """모르는 Pod IP를 만났을 때만 부르는 즉시 갱신. 짧은 간격은 무시한다.
+
+        폴링이 POLL_INTERVAL(기본 10초)마다 도는데, 그 사이에 뜬 Pod은 레지스트리에
+        없어 검증이 통째로 실패한다. 재배포 직후가 정확히 그 구간이다. 매 요청마다
+        K8s API를 때리지 않도록 최소 간격을 둔다.
+        """
+        now = time.monotonic()
+        if now - self._last_refresh < min_interval:
+            return False
+        self._last_refresh = now
+        await self.update_registry()
+        return True
 
     def _list_sidecar_pods(self):
         # kubernetes client는 동기 호출 — run_in_executor로 실행해 이벤트 루프를 막지 않는다
@@ -137,6 +154,15 @@ class RequestVerifier:
         - 첫 관측               → deny (관측 기록만 남김)
         - 같은 Pod에서만 관측    → deny
         - 다른 replica 관측 이력 → allow
+
+        **죽은 Pod의 IP를 이력에서 걷어내지 않는다.** 그렇게 해봤으나 근거가 없었다.
+        IP가 바뀌었다는 것은 컨테이너가 이미지에서 새로 떴다는 뜻이고, 그러면 실행 중인
+        프로세스에 붙어 있던 공격자의 발판도 사라진다. 다시 침투해야 하고, 그 정찰은
+        어차피 첫 관측부터 시작한다. 이미지 자체가 오염된 경우라면 replica 둘 다
+        장악돼 같은 요청을 보내므로 이 방식이 애초에 무력하다.
+
+        반대로 이력을 지우면 손해가 있다. 드물게 일어나는 정상 요청의 기록까지 사라져
+        재배포 직후 그 요청들이 한 번씩 다시 차단된다.
         """
         now = time.monotonic()
         signatures = self._records.setdefault(service, {})
@@ -199,9 +225,14 @@ def build_app(provider, verifier):
 
         service = provider.service_of(source_ip)
         if service is None:
+            # 폴링 주기 사이에 뜬 Pod일 수 있다. 한 번 즉시 갱신하고 다시 본다.
+            await provider.refresh_if_stale()
+            service = provider.service_of(source_ip)
+
+        if service is None:
             return web.json_response(
                 {
-                    "allow": False, 
+                    "allow": False,
                     "reason": "레지스트리에 없는 Pod: {}".format(source_ip)
                 },
                 status=400,

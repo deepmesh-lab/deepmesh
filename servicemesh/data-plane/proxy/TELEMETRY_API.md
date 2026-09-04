@@ -70,8 +70,17 @@ Content-Type: application/json
       "verificationPassed": false,
       "detectionLatencyMs": 0.61,
       "signature": "GET|kubernetes:443|/api/v1/secrets|q:|b:",
+      "windowSize": 5,
       "packets": [
-        { "seq": 1, "capturedAt": "2026-08-06T13:21:06.109+09:00", "length": 1460, "flags": "PSH,ACK" }
+        {
+          "seq": 1,
+          "capturedAt": "2026-08-06T13:21:06.109+09:00",
+          "length": 1460,
+          "payloadLength": 1406,
+          "flags": "PSH,ACK",
+          "dstIp": "10.96.0.1",
+          "dstPort": 443
+        }
       ]
     }
   ]
@@ -84,16 +93,40 @@ Content-Type: application/json
 |---|---|---|---|
 | `windowStats` | benign 포함 4분류 **집계** | 1s | `/dashboard/stats/*` |
 | `peerStats` | **목적지별 benign** | 1s | 평시 엣지와 그 굵기 |
-| `events` | `cleared`·`drop`·`relay` **개별** | 발생 즉시 큐 | `/dashboard/events` 행, 공격 엣지 |
+| `events` | `benign`·`cleared`·`drop`·`relay` **개별** | 발생 즉시 큐 | `/dashboard/events` 행, 공격 엣지 |
 
-평상시 대량 benign을 개별 이벤트로 보내면 부하가 초당 수천 건이 된다. benign은 집계
-숫자로만 보내고, 개별 저장 대상(`cleared/drop/relay`)만 `events`에 담는다.
-`backend-frontend-api.md`의 "benign은 개별 저장하지 않는다"와 일치한다.
+**네 분류의 단위는 같다 — HTTP 메시지 1건당 1이다.** 집계 지점이 `TelemetryClient.emit()`
+하나뿐이라서, `windowStats`의 숫자와 `events`의 행 수가 정확히 같은 것을 센다.
+
+예전에는 benign만 탐지 경로에서 셌다. 판정은 윈도우가 찬 뒤 **프레임마다** 나오므로
+(Algorithm 1 line 24의 sliding) 요청 한 번이 benign 수십 건이 됐고, cleared/drop/relay는
+집행 경로라 1건이었다. 그래서 대시보드의 정상 건수가 로그 행 수보다 10배 넘게 컸고
+이상 판정률도 실제보다 훨씬 작게 나왔다. 지금은 그렇지 않다.
+
+`EMIT_FORWARD_EVENTS=false`로 끄면 benign **이벤트**만 빠지고 집계는 그대로 오른다.
+집계까지 빼면 `peerStats`가 비어 토폴로지의 평시 경로가 통째로 사라진다.
+
+## `packets` — 판정이 본 그 윈도우
+
+`packets`는 **모델에 들어간 바로 그 윈도우**다. 컨버터가 특징 벡터를 쌓는 자리에서 메타를
+짝으로 같이 쌓기 때문에, 컨버터가 `extract()`로 걸러낸 프레임은 여기에도 없다. 탐지 경로에서
+따로 세면 걸러진 프레임이 섞여 판정과 무관한 패킷이 화면에 나온다.
+
+`seq`는 판정 시점에 윈도우에 남아 있는 순서대로 1부터 붙는다. 링버퍼라 오래된 것이 밀려나므로
+프레임 도착 순번과는 다르다.
+
+**페이로드 본문은 담지 않는다.** `payloadLength`만 남긴다 — 대시보드로 나가는 값이라 요청·응답
+본문이 그대로 흘러나가면 안 된다.
+
+이상 판정에만 붙는다. 정상 시퀀스는 개별 이벤트로 나가지 않아 실을 곳이 없고, 트래픽 대부분이
+정상이라 그만큼이 순수 낭비다. 그래서 `packets`가 없는 이벤트는 원래 없다 — 키가 아예 빠져 있으면
+탐지 모듈이 `window_meta`를 제공하지 않는 구성이라는 뜻이다.
 
 ## `peerStats` — benign만 목적지를 나른다
 
 토폴로지 엣지는 "관측된 통신"이다. `cleared`·`drop`·`relay`는 `events`가 `dstIp`와 함께
-나르므로 엣지를 만들 수 있지만, **benign은 개별 이벤트가 없어 목적지를 잃는다.** 그러면
+나르므로 엣지를 만들 수 있다. benign도 `emit()`이 `dstIp`로 목적지별 집계를 올리므로
+`peerStats`가 채워진다. `EMIT_FORWARD_EVENTS`를 꺼도 이 집계는 유지된다. 없으면
 평시 통신 경로(`post → mysql` 등)가 토폴로지에 한 줄도 그려지지 않는다 — 노드만 있고
 선이 없는 그래프가 되고, "평소 없던 `post → kubernetes` 엣지가 공격 시점에 생긴다"는
 대비 효과도 배경이 없어 사라진다.
@@ -168,7 +201,7 @@ dstIp = 목적지 (peerServiceName 역매핑)
 |---|---|
 | `direction`, 5-tuple, `sessionId`, `ocsvmScore`, `verdict`, `category`, `signature`, `verification*` | **지금 가능** — 프레임 파싱 + 집행 결과로 채움 |
 | `detectionLatencyMs` | **채움** — 어댑터가 classify 호출 전후로 측정 |
-| `packets[]` (5패킷 메타) | **Traffic Converter 결합 대기** — 윈도우를 Converter가 들고 있어 판정과 함께 반환받아야 함 |
+| `packets[]`·`windowSize` | **채움** — Converter가 벡터를 쌓는 자리에서 메타도 같이 쌓고(`ModelConverter.window_meta`), 어댑터가 이상 판정에만 실어 보낸다. 정상 판정에는 붙이지 않는다 |
 | `modelId` | Anomaly Detector 결합 시 확정 |
 
 ## 환경변수
@@ -178,4 +211,5 @@ dstIp = 목적지 (peerServiceName 역매핑)
 | `DASHBOARD_URL` | (없음) | 비면 텔레메트리 비활성 |
 | `TELEMETRY_INTERVAL` | `1.0` | 배치 전송 주기(초) |
 | `TELEMETRY_QUEUE_MAX` | `10000` | 큐 상한. 초과 시 오래된 것부터 폐기 |
+| `EMIT_FORWARD_EVENTS` | `true` | benign을 개별 이벤트로도 보낼지. 꺼도 집계는 오른다 |
 | `TELEMETRY_TIMEOUT` | `2.0` | POST 타임아웃(초) |

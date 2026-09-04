@@ -15,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -46,12 +47,19 @@ public class StreamController {
 
 	@GetMapping(value = "/dashboard/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public ResponseEntity<SseEmitter> stream(
-			@RequestHeader(value = "Last-Event-ID", required = false) String lastEventId) {
+			@RequestHeader(value = "Last-Event-ID", required = false) String lastEventId,
+			/*
+			 * 화면이 보고 있는 집계 구간. 스냅샷·델타를 이 구간으로 만든다.
+			 *
+			 * 받지 않고 5m으로 고정했더니, 1시간을 보는 화면에 "최근 5분에는 간선이 없다"는
+			 * 빈 스냅샷이 덮여 그래프가 통째로 비었다. 스냅샷은 병합이 아니라 교체다.
+			 */
+			@RequestParam(defaultValue = "5m") String timeRange) {
 
-		SseEmitter emitter = hub.subscribe();
+		SseEmitter emitter = hub.subscribe(timeRange);
 		replay(emitter, lastEventId);
 
-		TopologyResponse snapshot = topology.snapshot();
+		TopologyResponse snapshot = topology.snapshot(timeRange);
 		if (snapshot != null) {
 			// 최초 연결과 재연결 모두에서 보낸다. 토폴로지는 델타를 소급 적용할 수 없어
 			// 단절 구간 이후의 누적 상태를 신뢰할 수 없다.

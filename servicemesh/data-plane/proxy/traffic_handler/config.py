@@ -35,6 +35,15 @@ DASHBOARD_URL = os.environ.get("DASHBOARD_URL", "").rstrip("/")
 TELEMETRY_INTERVAL = _float("TELEMETRY_INTERVAL", 1.0)
 TELEMETRY_QUEUE_MAX = _int("TELEMETRY_QUEUE_MAX", 10000)
 TELEMETRY_TIMEOUT = _float("TELEMETRY_TIMEOUT", 2.0)
+# 모델이 정상으로 본 트래픽도 개별 이벤트로 보낼지.
+#
+# 끄면 정상 트래픽은 windowStats·peerStats의 집계 숫자로만 남아, "실제 게시판에서 한 이 조작이
+# 어떻게 판정됐는가"를 로그에서 되짚을 수 없다. 그래서 기본은 켜 둔다.
+#
+# 켜도 폭증하지 않는다. 이벤트는 **HTTP 메시지 1건당 1개**이고 집행 경로에서만 나간다.
+# 집계 카운터(incr("benign"))가 세는 단위와 다르다 — 그쪽은 윈도우가 찬 뒤 프레임마다
+# 1씩 오르므로 요청 하나가 수십 건으로 잡힌다. 두 숫자가 크게 다른 것은 정상이다.
+EMIT_FORWARD_EVENTS = _bool("EMIT_FORWARD_EVENTS", True)
 
 # --- Control Plane ----------------------------------------------------------
 CONTROL_PLANE_URL = os.environ.get("CONTROL_PLANE_URL", "http://127.0.0.1:8080").rstrip("/")

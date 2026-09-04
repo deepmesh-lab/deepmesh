@@ -25,7 +25,7 @@ spec:
       initContainers:
         # 사이드카와 같은 이미지를 쓰되 root로 실행한다 (iptables 규칙 주입).
         - name: iptables-init
-          image: kimgooner/reverse-proxy:v2
+          image: kimgooner/reverse-proxy:v4
           # 태그를 재사용하므로 기본값(IfNotPresent)이면 노드가 캐시된 옛 이미지를 쓴다.
           imagePullPolicy: Always
           command: ["sh", "/app/iptables.sh"]
@@ -46,26 +46,28 @@ spec:
           image: kimgooner/frontend:v3
           ports:
             - containerPort: 80
-          env:
-            - name: VITE_AUTH_API_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: deepmesh-config
-                  key: AUTH_SERVICE_URL
-            - name: VITE_POST_API_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: deepmesh-config
-                  key: POST_SERVICE_URL
-            - name: VITE_COMMENT_API_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: deepmesh-config
-                  key: COMMENT_SERVICE_URL
+          # nginx 설정을 통째로 덮어쓴다. /api/**를 백엔드로 넘기는 프록시가 여기 있다.
+          # 이 마운트가 없으면 이미지 안의 설정이 쓰이는데, 그쪽이 옛것이면 SPA fallback이
+          # API 요청까지 삼켜 화면이 빈다.
+          #
+          # VITE_* 런타임 env는 두지 않는다. 그 값들은 빌드 시점에 번들로 구워지므로
+          # Deployment에 넣어도 아무 효과가 없고, 주소가 설정된 것처럼 보이게 만들어
+          # 오해만 부른다. 실제 주소는 위 ConfigMap의 proxy_pass에 있다.
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+              readOnly: true
+          # 프로브를 서비스 포트(80) 밖으로 뺀다. iptables는 TARGET_PORT(80)만
+          # 리다이렉트하므로 이 포트로 오는 kubelet 프로브는 사이드카를 거치지 않는다.
+          # 그대로 두면 10초마다 오는 프로브 응답이 탐지 대상이 되어, 대시보드에
+          # 사라지지 않는 frontend→external 선으로 남는다(트래픽이 아니라 관측 장치다).
+          # 백엔드 3종이 MANAGEMENT_SERVER_PORT로 푼 것과 같은 방법이고, 8081 리스너는
+          # frontend-nginx ConfigMap에 있다.
           readinessProbe:
             httpGet:
-              path: /
-              port: 80
+              path: /healthz
+              port: 8081
             initialDelaySeconds: 10
             periodSeconds: 10
             failureThreshold: 3
@@ -73,7 +75,7 @@ spec:
         # 컨테이너 이름은 바꾸지 말 것 — Control Plane의 Pod 디스커버리 기준이다
         # (SIDECAR_CONTAINER=reverse-proxy)
         - name: reverse-proxy
-          image: kimgooner/reverse-proxy:v2
+          image: kimgooner/reverse-proxy:v4
           # 태그를 재사용하므로 기본값(IfNotPresent)이면 노드가 캐시된 옛 이미지를 쓴다.
           imagePullPolicy: Always
           ports:
@@ -98,6 +100,20 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            # 텔레메트리 이벤트의 출처 식별에 쓴다. 주입하지 않으면 config.py의 기본값이
+            # 그대로 나가 podName·nodeName이 "unknown", namespace가 "default"로 저장된다.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             # 모델 디렉터리 이름과 같아서 DETECTION_SERVICE를 따로 주지 않아도 된다
             # (백엔드는 "auth-service"라 접미사를 떼야 "auth"가 된다).
             - name: SERVICE_NAME
@@ -140,3 +156,6 @@ spec:
         - name: model
           persistentVolumeClaim:
             claimName: deepmesh-model-pvc
+        - name: nginx-conf
+          configMap:
+            name: frontend-nginx

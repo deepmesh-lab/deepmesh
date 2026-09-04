@@ -73,7 +73,10 @@ class TelemetryClient:
     # -- 생산자 (아무 스레드에서나 호출) -------------------------------------
 
     def incr(self, category, peer=None):
-        """집계 카운터만 올린다. benign처럼 개별 이벤트가 없는 분류에 쓴다.
+        """집계 카운터만 올린다.
+
+        지금 운영 경로는 전부 emit()을 거치므로 이 메서드는 쓰이지 않는다. 텔레메트리를
+        직접 쓰는 도구·테스트를 위해 남겨 둔다.
 
         peer(목적지 IP)를 주면 목적지별 집계도 함께 올린다. benign에만 의미가 있다 —
         나머지 분류는 events가 dstIp를 들고 오므로 여기서 또 세면 같은 사실이 두 경로로
@@ -93,13 +96,26 @@ class TelemetryClient:
             peer = OTHER_PEER   # 슬롯이 찼다. 창이 끝날 때까지 나머지는 여기로 모은다
         self._peer_benign[peer] = self._peer_benign.get(peer, 0) + 1
 
-    def emit(self, event):
-        """개별 이벤트를 큐에 넣고 해당 분류를 집계한다 (cleared/drop/relay)."""
+    def emit(self, event, queue=True):
+        """판정 1건을 집계하고, queue면 개별 이벤트로도 남긴다.
+
+        **네 분류의 유일한 집계 지점이다.** 여기서만 세기 때문에 windowStats의 숫자와
+        events의 행 수가 정확히 같은 단위(HTTP 메시지 1건)를 가리킨다.
+
+        queue=False는 EMIT_FORWARD_EVENTS를 끈 경우다. 이벤트만 빼고 집계는 그대로
+        올린다 — 여기서 같이 빼면 benign이 통계에서도 사라져 토폴로지의 평시 경로가
+        통째로 없어진다.
+        """
         if not self._enabled:
             return
+        category = event["category"]
         with self._lock:
-            self._counts[event["category"]] = self._counts.get(event["category"], 0) + 1
-            self._events.append(event)
+            self._counts[category] = self._counts.get(category, 0) + 1
+            # 목적지별 benign. 토폴로지가 평시 통신 경로(엣지)를 그리는 근거다.
+            if category == "benign" and event.get("dstIp"):
+                self._count_peer(event["dstIp"])
+            if queue:
+                self._events.append(event)
 
     # -- 소비자 (asyncio 전송 루프) ------------------------------------------
 
@@ -155,12 +171,16 @@ class TelemetryClient:
             logger.warning("텔레메트리 전송 실패(%s) — 배치 폐기", exc)
 
 
-def build_event(observation, verdict, category, stage, passed, signature, protocol="TCP"):
+def build_event(observation, verdict, category, stage, passed, signature, protocol="TCP",
+                model_verdict="ATTACK"):
     """SessionObservation과 집행 결과로 이벤트 dict를 만든다.
 
     peerServiceName·eventId·summary는 넣지 않는다 — 백엔드가 채운다(TELEMETRY_API.md).
+
+    model_verdict를 인자로 받는 이유는 benign(정상 판정) 이벤트 때문이다. 그 경로는 모델이
+    BENIGN으로 본 것이라 ATTACK으로 고정해 보내면 화면이 통째로 거짓말을 한다.
     """
-    return {
+    event = {
         "occurredAt": _now_iso(),
         "direction": observation.direction,
         "sessionId": session_label(
@@ -170,7 +190,7 @@ def build_event(observation, verdict, category, stage, passed, signature, protoc
         "srcIp": observation.src_ip, "srcPort": observation.src_port,
         "dstIp": observation.dst_ip, "dstPort": observation.dst_port,
         "protocol": protocol,
-        "modelVerdict": "ATTACK",
+        "modelVerdict": model_verdict,
         "ocsvmScore": observation.score,
         "verdict": verdict,
         "category": category,
@@ -180,3 +200,11 @@ def build_event(observation, verdict, category, stage, passed, signature, protoc
         "detectionLatencyMs": round(getattr(observation, "latency_ms", 0.0), 4),
         "signature": signature,
     }
+    # 판정에 쓰인 윈도우. 대시보드 상세가 "이 판정은 무엇을 보고 내려졌나"를 보여준다.
+    # 없을 수도 있다 — 탐지 모듈이 window_meta를 제공하지 않는 구성이면 그렇다.
+    # 그때는 키 자체를 빼서 백엔드가 null로 저장하게 둔다(있는데 빈 것과 구분된다).
+    window = tuple(getattr(observation, "packets", ()) or ())
+    if window:
+        event["packets"] = [dict(meta) for meta in window]
+        event["windowSize"] = len(window)
+    return event

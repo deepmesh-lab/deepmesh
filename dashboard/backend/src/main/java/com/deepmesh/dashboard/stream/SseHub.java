@@ -41,9 +41,17 @@ public class SseHub {
 	private final List<Subscriber> subscribers = new CopyOnWriteArrayList<>();
 	private final Clock clock;
 
-	public SseEmitter subscribe() {
+	/**
+	 * 구독자를 등록한다.
+	 *
+	 * <p>{@code timeRange}를 함께 들고 있는 이유 — 토폴로지 델타는 집계 구간에 따라 값이
+	 * 다르다. 구간을 무시하고 하나로 방송하면 1시간을 보고 있는 화면에 5분치 계산 결과가
+	 * 덮여 간선이 통째로 사라진다.
+	 */
+	public SseEmitter subscribe(String timeRange) {
 		SseEmitter emitter = new SseEmitter(TIMEOUT_MILLIS);
-		Subscriber subscriber = new Subscriber(emitter, clock.instant().toEpochMilli());
+		Subscriber subscriber =
+				new Subscriber(emitter, clock.instant().toEpochMilli(), timeRange);
 		subscribers.add(subscriber);
 		emitter.onCompletion(() -> subscribers.remove(subscriber));
 		emitter.onTimeout(() -> subscribers.remove(subscriber));
@@ -58,6 +66,24 @@ public class SseHub {
 
 	public int subscriberCount() {
 		return subscribers.size();
+	}
+
+	/** 지금 붙어 있는 구독자들이 보고 있는 집계 구간. 델타를 구간별로 만들기 위해 쓴다. */
+	public java.util.Set<String> activeTimeRanges() {
+		java.util.Set<String> ranges = new java.util.LinkedHashSet<>();
+		for (Subscriber subscriber : subscribers) {
+			ranges.add(subscriber.timeRange);
+		}
+		return ranges;
+	}
+
+	/** 같은 집계 구간을 보고 있는 구독자에게만 보낸다. */
+	public void broadcastTo(String timeRange, String eventName, Object payload) {
+		for (Subscriber subscriber : subscribers) {
+			if (subscriber.timeRange.equals(timeRange)) {
+				deliver(subscriber, eventName, payload, null);
+			}
+		}
 	}
 
 	/**
@@ -138,10 +164,13 @@ public class SseHub {
 	private static final class Subscriber {
 		private final SseEmitter emitter;
 		private volatile long lastSentAt;
+		/** 이 구독자가 보고 있는 집계 구간. 토폴로지 델타를 이 값으로 갈라 보낸다. */
+		private final String timeRange;
 
-		private Subscriber(SseEmitter emitter, long lastSentAt) {
+		private Subscriber(SseEmitter emitter, long lastSentAt, String timeRange) {
 			this.emitter = emitter;
 			this.lastSentAt = lastSentAt;
+			this.timeRange = timeRange;
 		}
 	}
 }

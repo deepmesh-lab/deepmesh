@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -42,6 +43,26 @@ public class Fabric8ClusterTopologySource implements ClusterTopologySource {
 	 * 곳을 가리켜야 사이드카가 그리로 보낸 트래픽이 control-plane 노드로 되돌아온다.
 	 */
 	private final String controlPlaneHost;
+
+	/**
+	 * GATEWAY로 표시할 노드 id. 사이드카 유무만으로는 가려낼 수 없어 설정으로 받는다.
+	 *
+	 * <p>노드 id를 바꾸지 않는 것이 핵심이다. serviceName은 이벤트·간선 매칭의 조인
+	 * 키라(NodeIds), 표시 이름을 바꾸면 로그의 이름과 그래프의 이름이 갈라진다.
+	 * 달라지는 것은 kind 하나뿐이다.
+	 */
+	private final Set<String> gatewayNodes;
+
+	/** 사이드카가 붙어 있으면 GATEWAY 지정 여부에 따라, 아니면 DATASTORE. */
+	private NodeKind kindOf(String nodeId, boolean proxied) {
+		if (!proxied) {
+			// 사이드카가 없으면 DATASTORE로 접는다. 명세의 kind 열거에 "감시 대상이
+			// 아닌 클러스터 내 워크로드"를 따로 두지 않았고, 화면 동작을 가르는 것은
+			// kind가 아니라 proxyEnabled=false -> counts null -> UNMONITORED다.
+			return NodeKind.DATASTORE;
+		}
+		return gatewayNodes.contains(nodeId) ? NodeKind.GATEWAY : NodeKind.SERVICE;
+	}
 
 	@Override
 	public List<ServiceWorkload> workloads(String namespace) {
@@ -115,10 +136,7 @@ public class Fabric8ClusterTopologySource implements ClusterTopologySource {
 				String nodeId = NodeIds.of(entry.getKey());
 				boolean proxied = entry.getValue().stream()
 						.anyMatch(Fabric8ClusterTopologySource::hasSidecar);
-				// 사이드카가 없으면 DATASTORE로 접는다. 명세의 kind 열거에 "감시 대상이
-				// 아닌 클러스터 내 워크로드"를 따로 두지 않았고, 화면 동작을 가르는 것은
-				// kind가 아니라 proxyEnabled=false -> counts null -> UNMONITORED다.
-				kinds.put(nodeId, proxied ? NodeKind.SERVICE : NodeKind.DATASTORE);
+				kinds.put(nodeId, kindOf(nodeId, proxied));
 				for (Pod pod : entry.getValue()) {
 					String ip = pod.getStatus() == null ? null : pod.getStatus().getPodIP();
 					if (ip != null) {
@@ -147,14 +165,14 @@ public class Fabric8ClusterTopologySource implements ClusterTopologySource {
 		});
 	}
 
-	private static ServiceWorkload toWorkload(
+	private ServiceWorkload toWorkload(
 			String name, String namespace, Map<String, List<Pod>> podsByApp,
 			Integer replicas, Integer readyReplicas) {
 		List<Pod> pods = podsByApp.getOrDefault(name, List.of());
 		boolean proxied = pods.stream().anyMatch(Fabric8ClusterTopologySource::hasSidecar);
 		// 노드 id는 워크로드 이름이 아니라 짧은 이름이다 (NodeIds 참고).
-		return new ServiceWorkload(NodeIds.of(name), namespace,
-				proxied ? NodeKind.SERVICE : NodeKind.DATASTORE,
+		String nodeId = NodeIds.of(name);
+		return new ServiceWorkload(nodeId, namespace, kindOf(nodeId, proxied),
 				nullSafe(replicas), nullSafe(readyReplicas), proxied);
 	}
 
