@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: nginx
-          image: uicheolshin/dashboard-frontend:latest
+          image: kimgooner/dashboard-frontend:v5
           imagePullPolicy: Always
           ports:
             - name: http
