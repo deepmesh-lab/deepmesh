@@ -213,39 +213,36 @@ class TrafficHandler:
         is_http = http_message.looks_like_http_request(head)
         first_request = None
 
-        if is_http:
-            try:
-                first_request = await http_message.read_request(
-                    reader, self.config.max_body_bytes
-                )
-            except ValueError as exc:
-                logger.debug("HTTP 파싱 실패 — 연결 종료: %s", exc)
-                return
-            if first_request is None:
-                return
-            signature = self._signature(first_request, dst)
-        else:
-            signature = sig.tcp_signature(dst[0], dst[1])
-
-        # 판정을 잠깐 기다린다. 판정은 세션당 프레임 5개가 스니퍼에 잡혀야 나오는데,
-        # 여기서 바로 조회하면 아직 1~2 프레임뿐이라 판정이 없다. 그러면 이상 트래픽도
-        # verify 없이 전달돼 Drop 경로가 죽는다(응답 경로만 살아 시나리오 1이 시연 안 됨).
-        # 같은 프레임을 검지 스레드가 동시에 처리하므로 짧게 기다리면 판정이 나온다.
-        detection = await self._await_verdict(sessions)
-        if detection is not None and detection.is_malicious:
-            kind = "outbound request" if is_http else "outbound tcp"
-            method = first_request.method if is_http else "TCP"
-            target = first_request.target if is_http else "{}:{}".format(*dst)
-            if not await self.control_plane.verify(signature):
-                self._log(DROP, kind, method, target, detection)
-                self._emit(detection, VERDICT_DROP, CAT_DROP, STAGE_REQUEST, False, signature,
-                           endpoint=dst, src_port=peer[1])
-                if is_http:
-                    await self._write_drop(client_writer)
-                return  # Algorithm 1 line 19-20: Drop 후 종료
-            self._log(FORWARD, kind + "(검증 통과)", method, target, detection)
-            self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_REQUEST, True, signature,
-                       endpoint=dst, src_port=peer[1])
+        try:
+            if is_http:
+                # 통과할 요청이 나올 때까지 이 연결에서 계속 집행한다. Drop마다 연결을
+                # 끊으면 클라이언트가 새 연결을 열고, 새 연결은 세션 id가 달라 검지 창이
+                # 0부터 다시 찬다 — 그 창이 다시 찰 때까지는 판정 자체가 없어 무조건
+                # 통과한다. 즉 연결을 끊는 집행이 상대의 창을 리셋해 다음 요청을 통과
+                # 시킨다. 연결을 유지해야 같은 세션 id에 머물러 Drop이 반복 적용된다.
+                while True:
+                    first_request = await http_message.read_request(
+                        reader, self.config.max_body_bytes
+                    )
+                    if first_request is None:
+                        return
+                    signature = self._signature(first_request, dst)
+                    if await self._admit(sessions, signature, "outbound request",
+                                         first_request.method, first_request.target,
+                                         dst, peer):
+                        break
+                    await self._write_drop(client_writer)  # Algorithm 1 line 19-20
+                    if first_request.wants_close():
+                        return
+            else:
+                # 비HTTP(raw TCP)는 돌려줄 상태 코드가 없어 종료가 유일한 집행이다.
+                signature = sig.tcp_signature(dst[0], dst[1])
+                if not await self._admit(sessions, signature, "outbound tcp", "TCP",
+                                         "{}:{}".format(*dst), dst, peer):
+                    return
+        except ValueError as exc:
+            logger.debug("HTTP 파싱 실패 — 연결 종료: %s", exc)
+            return
 
         upstream_ip = LOCALHOST if dst[0] == self.config.pod_ip else dst[0]
         try:
@@ -307,20 +304,18 @@ class TrafficHandler:
             request = await http_message.read_request(reader, self.config.max_body_bytes)
             if request is None:
                 break
-            # 첫 요청과 같은 기준으로 판정을 기다린다. 이미 판정이 있으면 _await_verdict가
-            # 즉시 돌아오므로, 창이 데워진 keep-alive 연결은 대기 비용을 치르지 않는다.
-            detection = await self._await_verdict(sessions)
-            if detection is not None and detection.is_malicious:
-                signature = self._signature(request, dst)
-                if not await self.control_plane.verify(signature):
-                    self._log(DROP, "outbound request", request.method, request.target,
-                              detection)
-                    self._emit(detection, VERDICT_DROP, CAT_DROP, STAGE_REQUEST, False,
-                               signature, endpoint=dst, src_port=peer[1])
-                    await self._write_drop(client_writer)
+            # 첫 요청과 같은 기준으로 집행한다. Drop이어도 연결은 유지한다 — 끊으면
+            # 클라이언트의 다음 연결에서 검지 창이 0부터 다시 차 그대로 통과한다.
+            signature = self._signature(request, dst)
+            while not await self._admit(sessions, signature, "outbound request",
+                                        request.method, request.target, dst, peer):
+                await self._write_drop(client_writer)
+                if request.wants_close():
                     return
-                self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_REQUEST, True,
-                           signature, endpoint=dst, src_port=peer[1])
+                request = await http_message.read_request(reader, self.config.max_body_bytes)
+                if request is None:
+                    return
+                signature = self._signature(request, dst)
 
     # -- 3번: inbound 연결의 응답 (Relay 경로) -------------------------------
 
@@ -482,6 +477,29 @@ class TrafficHandler:
             ids.add(upstream_side.session_id(self.config.max_sessions))
         return ids
 
+    async def _admit(self, sessions, signature, kind, method, target, dst, peer):
+        """이 요청을 내보내도 되는가 — Algorithm 1 line 9~20의 요청 경로.
+
+        판정이 없거나 정상이면 그대로 통과다. 이상이면 Request Verifier에게 묻고,
+        다른 replica가 같은 요청을 낸 적 있으면 오탐으로 보아 전달(cleared)한다.
+        """
+        # 판정을 잠깐 기다린다. 검지는 세션당 이미지 프레임 5개가 차야 판정을 내는데,
+        # 요청이 도착한 직후엔 아직 안 찼다. 즉시 조회하면 이상 트래픽도 verify 없이
+        # 전달돼 Drop 경로가 죽는다. 이미 판정이 있으면 _await_verdict가 즉시 돌아오므로
+        # 창이 데워진 keep-alive 연결은 대기 비용을 치르지 않는다.
+        detection = await self._await_verdict(sessions)
+        if detection is None or not detection.is_malicious:
+            return True
+        if not await self.control_plane.verify(signature):
+            self._log(DROP, kind, method, target, detection)
+            self._emit(detection, VERDICT_DROP, CAT_DROP, STAGE_REQUEST, False, signature,
+                       endpoint=dst, src_port=peer[1])
+            return False
+        self._log(FORWARD, kind + "(검증 통과)", method, target, detection)
+        self._emit(detection, VERDICT_FORWARD, CAT_CLEARED, STAGE_REQUEST, True, signature,
+                   endpoint=dst, src_port=peer[1])
+        return True
+
     async def _write_drop(self, writer):
         """Drop을 명시적 응답으로 알린다.
 
@@ -494,8 +512,12 @@ class TrafficHandler:
         찍히는데 요청은 결국 성공하는 증상의 원인이다.
 
         비HTTP(raw TCP)에는 돌려줄 상태 코드가 없어 종료가 유일한 집행이다.
+
+        연결은 닫지 않는다(close=False). 닫으면 클라이언트가 새 연결을 열고, 새 연결은
+        세션 id가 달라 검지 창이 0부터 다시 차기 시작한다 — 창이 찰 때까지는 판정이
+        아예 없어 무조건 통과하므로, 닫는 행위가 곧 다음 요청을 통과시켜 준다.
         """
-        _write_simple(writer, DROP_STATUS, DROP_BODY)
+        _write_simple(writer, DROP_STATUS, DROP_BODY, close=False)
         try:
             await writer.drain()
         except (ConnectionResetError, BrokenPipeError):
@@ -515,11 +537,11 @@ class TrafficHandler:
         )
 
 
-def _write_simple(writer, status, body):
+def _write_simple(writer, status, body, close=True):
     reason = {200: "OK", 400: "Bad Request", 403: "Forbidden",
               404: "Not Found"}.get(status, "OK")
-    head = "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n".format(
-        status, reason, len(body)
+    head = "HTTP/1.1 {} {}\r\nContent-Length: {}\r\n{}\r\n".format(
+        status, reason, len(body), "Connection: close\r\n" if close else ""
     )
     writer.write(head.encode("latin1") + body)
 

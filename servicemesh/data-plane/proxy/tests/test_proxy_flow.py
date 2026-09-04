@@ -698,3 +698,36 @@ def test_keepalive_두번째_요청도_이상이면_Drop한다():
     drops = [e for e in events if e["verdict"] == "DROP"]
     assert len(drops) == 1
     assert drops[0]["srcPort"] == local_port
+
+
+def test_Drop해도_연결을_끊지_않아_다음_요청도_막힌다():
+    # Drop이 연결을 끊으면 클라이언트는 새 연결을 연다. 새 연결은 세션 id가 달라 검지
+    # 창이 0부터 다시 차고, 찰 때까지는 판정이 없어 무조건 통과한다 — 끊는 집행이
+    # 곧 다음 요청을 통과시켜 준다. 연결을 유지해야 Drop이 반복 적용된다.
+    async def scenario():
+        h = Harness(allow=False, treat_client_as_local=True)
+        await h.start()
+        try:
+            reader, writer = await asyncio.open_connection("127.0.0.1", h.port)
+            local_port = writer.get_extra_info("sockname")[1]
+            buffered = http_message.BufferedReader(reader, 65536)
+            h.mark_malicious_client_session(local_port)
+
+            responses = []
+            for _ in range(3):
+                writer.write(KEEPALIVE_GET)
+                await writer.drain()
+                responses.append(
+                    await asyncio.wait_for(
+                        http_message.read_response(buffered, "GET", 1 << 20), timeout=5.0
+                    )
+                )
+            writer.close()
+            return responses, list(h.telemetry.events), len(h.backend.requests)
+        finally:
+            await h.stop()
+
+    responses, events, forwarded = run(scenario())
+    assert [r.status for r in responses] == [403, 403, 403]  # 연결이 살아 3번 다 막힌다
+    assert forwarded == 0                                    # 하나도 나가지 않았다
+    assert len([e for e in events if e["verdict"] == "DROP"]) == 3
