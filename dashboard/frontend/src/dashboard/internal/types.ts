@@ -17,18 +17,25 @@ export type IsoDateTime = string
  * 명세 1-2·1-3: 토폴로지 계열이 받는 집계 구간. **`24h`가 없다.**
  * 요약(1-4)만 24h를 받으므로 타입을 분리해 잘못된 값이 넘어가는 것을 컴파일 단계에서 막는다.
  */
-export type TopologyTimeRange = '1m' | '5m' | '15m' | '1h'
+export type TopologyTimeRange = '1m' | '5m' | '15m' | '30m' | '1h' | '6h'
 
 /** 명세 1-4: 요약·서비스별 분포가 받는 집계 구간 */
 export type TimeRange = TopologyTimeRange | '24h'
 
 export type Interval = '10s' | '1m' | '5m'
 
+/**
+ * 화면에서 고를 수 있는 집계 구간.
+ *
+ * 짧은 쪽(1m·5m·15m)은 뺐다. 트래픽이 잠깐만 뜸해도 카드가 전부 0이 되고 지연 값이
+ * null로 와서 "대시보드가 고장 났다"로 읽힌다. 실제로 그 상태에서 화면이 죽었다.
+ *
+ * 타입과 백엔드는 옛 값도 그대로 받는다 — URL로 직접 지정하는 길은 막지 않는다.
+ */
 export const TOPOLOGY_TIME_RANGES: readonly TopologyTimeRange[] = [
-  '1m',
-  '5m',
-  '15m',
+  '30m',
   '1h',
+  '6h',
 ]
 
 export const STATS_TIME_RANGES: readonly TimeRange[] = [
@@ -186,8 +193,13 @@ export type SummaryResponse = {
   relayCount: number
   anomalyRate: number
   blockRate: number
-  avgDetectionLatencyMs: number
-  p95DetectionLatencyMs: number
+  /**
+   * 구간에 표본이 없으면 **null이다.** 백엔드 `StatsService.percentile`이 빈 목록에
+   * null을 돌려준다(`Double`). 트래픽이 잠시 끊기기만 해도 그렇게 되므로 값이 있다고
+   * 가정하고 `.toFixed()`를 부르면 화면이 통째로 죽는다 — 실제로 그렇게 깨졌다.
+   */
+  avgDetectionLatencyMs: number | null
+  p95DetectionLatencyMs: number | null
   activeServiceCount: number
   activePodCount: number
 }
@@ -280,8 +292,11 @@ export type DetectionEvent = {
   dstPort: number
   protocol: string
   peerServiceName: string | null
-  /** 이 API는 ATTACK만 반환한다. */
-  modelVerdict: 'ATTACK'
+  /**
+   * 모델 판정. 프록시가 정상 판정도 개별 이벤트로 남기면서 `BENIGN`이 함께 온다.
+   * 예전에는 `'ATTACK'`으로 고정돼 있었는데, 그건 benign 이벤트가 없던 시절의 계약이다.
+   */
+  modelVerdict: 'BENIGN' | 'ATTACK'
   /**
    * OCSVM decision_function() 원값. 음수가 ATTACK.
    *
@@ -290,9 +305,14 @@ export type DetectionEvent = {
    */
   ocsvmScore: number | null
   verdict: Verdict
-  category: Exclude<VerdictCategory, 'benign'>
-  verificationStage: VerificationStage
-  verificationPassed: boolean
+  /** 네 분류 모두 온다. benign은 모델이 정상으로 본 건이다. */
+  category: VerdictCategory
+  /**
+   * 교차 검증은 **이상 판정에만** 돈다. category가 benign이면 검증을 돌리지 않았으므로
+   * 둘 다 null이다. false로 채우면 "검증에 실패했다"로 읽힌다.
+   */
+  verificationStage: VerificationStage | null
+  verificationPassed: boolean | null
   /** 나중에 추가된 필드라 그 이전에 쌓인 행에는 값이 없다. */
   detectionLatencyMs: number | null
   summary: string
@@ -433,7 +453,8 @@ export type StatsTickPayload = {
   relayCount: number
   anomalyRate: number
   blockRate: number
-  avgDetectionLatencyMs: number
+  /** 위와 같은 이유로 null이 온다. */
+  avgDetectionLatencyMs: number | null
 }
 
 export type AlertPayload = {

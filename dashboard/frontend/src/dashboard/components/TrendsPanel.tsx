@@ -14,7 +14,10 @@ const INTERVAL_BY_RANGE: Record<TopologyTimeRange, Interval> = {
   '1m': '10s',
   '5m': '10s',
   '15m': '1m',
+  '30m': '1m',
   '1h': '1m',
+  // 6시간을 1분 버킷으로 그리면 360점이라 선이 뭉개진다. 5분이면 72점이다.
+  '6h': '5m',
 }
 
 export const METRIC_TITLE: Record<TimeseriesMetric, string> = {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SummaryResponse } from '../internal/types'
+import { fixed } from '../internal/format'
 import { formatPercent } from '../internal/verdict'
 
 type CardSpec = {
@@ -60,9 +61,13 @@ function buildCards(summary: SummaryResponse): CardSpec[] {
       value: formatPercent(summary.blockRate),
       sub: `이상 판정률 ${formatPercent(summary.anomalyRate)}`,
       // 평균과 p95를 나란히 둔다. 평균만 보면 꼬리 지연이 가려진다. (명세 1-4)
+      //
+      // 두 값은 구간에 표본이 없으면 null이다. 트래픽이 잠깐만 끊겨도 그렇게 되므로
+      // fixed()로 받아 대시로 떨어뜨린다. 0ms로 대체하지 않는다 — "측정 안 됨"과
+      // "0ms"는 다르고, 0으로 보이면 탐지가 공짜인 것처럼 읽힌다.
       sub2:
-        `지연 평균 ${summary.avgDetectionLatencyMs.toFixed(2)}ms, ` +
-        `p95 ${summary.p95DetectionLatencyMs.toFixed(2)}ms`,
+        `지연 평균 ${fixed(summary.avgDetectionLatencyMs, 2) ?? '—'}ms, ` +
+        `p95 ${fixed(summary.p95DetectionLatencyMs, 2) ?? '—'}ms`,
     },
   ]
 }

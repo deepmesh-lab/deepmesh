@@ -59,16 +59,39 @@ public class TopologyBroadcaster {
 		}
 	}
 
+	/**
+	 * 구간별 재계산 주기(틱 수). 이 스케줄이 1초마다 도므로 값이 곧 초다.
+	 *
+	 * <p>{@code buildEdges}는 구간 안의 판정 이벤트와 benign 집계를 <b>전부</b> 읽는다.
+	 * 6시간이면 수만 행이라 매초 다시 읽으면 백엔드가 그 일만 하게 된다. 넓은 구간의
+	 * 그림은 1초 사이에 눈에 띄게 변하지 않으므로 주기를 구간에 비례해 늘린다.
+	 *
+	 * <p>탐지 피드는 이 제한과 무관하다. 그쪽은 DetectionBroadcaster가 200ms로 따로
+	 * 흘리므로, 공격이 일어난 순간의 로그는 넓은 구간을 보고 있어도 즉시 도착한다.
+	 */
+	private static final Map<String, Integer> REFRESH_TICKS = Map.of(
+			"1m", 1, "5m", 1, "15m", 1,
+			"30m", 2, "1h", 2, "6h", 10, "24h", 30);
+
+	private static final int DEFAULT_REFRESH_TICKS = 2;
+
+	/** publishDelta 호출 횟수. 시계에 기대지 않아 테스트가 결정적이다. */
+	private long tick;
+
 	@Scheduled(fixedRate = 1000)
 	public void publishDelta() {
 		Set<String> ranges = hub.activeTimeRanges();
 		if (ranges.isEmpty()) {
 			return;
 		}
+		tick++;
 		// 아무도 안 보는 구간의 기준선은 버린다. 다시 붙으면 스냅샷부터 다시 잡는다.
 		lastByRange.keySet().retainAll(ranges);
 
 		for (String range : ranges) {
+			if (tick % REFRESH_TICKS.getOrDefault(range, DEFAULT_REFRESH_TICKS) != 0) {
+				continue;
+			}
 			TopologyResponse previous = lastByRange.get(range);
 			TopologyResponse current;
 			try {
