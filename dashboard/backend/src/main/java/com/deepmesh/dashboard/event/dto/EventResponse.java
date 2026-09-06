@@ -30,7 +30,15 @@ public record EventResponse(
 		String verificationStage,
 		Boolean verificationPassed,
 		Double detectionLatencyMs,
-		String summary
+		String summary,
+		/**
+		 * 판정 대상이 된 요청·응답의 시그니처.
+		 *
+		 * <p>{@code 메서드|대상|경로|q:쿼리|b:본문힌트} 형태다. 어떤 API 호출이 이 판정을
+		 * 받았는지는 이 값에만 있다. summary에 문장으로 섞여 있었지만 파싱해 쓰라고 둘 값이
+		 * 아니라 필드로 내보낸다.
+		 */
+		String signature
 ) {
 	public static EventResponse from(DetectionEvent e) {
 		return from(e, e.getPeerServiceName());
@@ -51,6 +59,7 @@ public record EventResponse(
 				e.getSessionId(), e.getSrcIp(), e.getSrcPort(), e.getDstIp(), e.getDstPort(),
 				e.getProtocol(), peerServiceName, e.getModelVerdict(), e.getOcsvmScore(),
 				e.getVerdict(), e.getCategory(), e.getVerificationStage(),
-				e.getVerificationPassed(), e.getDetectionLatencyMs(), e.getSummary());
+				e.getVerificationPassed(), e.getDetectionLatencyMs(), e.getSummary(),
+				e.getSignature());
 	}
 }

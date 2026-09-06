@@ -17,7 +17,8 @@ import lombok.NoArgsConstructor;
  * 프록시가 1초 주기로 보내는 peerStats 한 줄 — 목적지별 benign 집계.
  *
  * <p>토폴로지의 평시 엣지는 이것만이 근거다. cleared/drop/relay는 detection_event가
- * dstIp와 함께 갖고 있지만 benign은 개별 이벤트로 남지 않아, 이 표가 없으면 정상 통신
+ * dstIp와 함께 갖고 있다. benign 이벤트도 남지만 그쪽은 HTTP 메시지 단위라 패킷
+ * 윈도우 단위의 굵기를 낼 수 없다. 이 표가 없으면 정상 통신
  * 경로가 그래프에 그려지지 않는다 (TELEMETRY_API.md의 peerStats 절).
  *
  * <p>stats_bucket과 나눈 이유는 집계 단위가 다르기 때문이다. stats_bucket은 프록시 단위

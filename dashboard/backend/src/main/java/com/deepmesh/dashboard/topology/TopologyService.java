@@ -213,7 +213,8 @@ public class TopologyService {
 	private List<EdgeResponse> buildEdges(TimeRange range, PeerIndex peers) {
 		Map<String, EdgeAccumulator> byId = new HashMap<>();
 
-		// benign — 개별 이벤트가 없어 이 집계만이 근거다
+		// benign 굵기는 이 집계에서만 온다. benign 이벤트도 들어오지만 그쪽은 HTTP 메시지
+		// 단위라 여기에 더하면 단위가 섞인다 — addEvent는 benign을 세지 않는다.
 		for (PeerBenignBucket bucket : peerRepository
 				.findByWindowToGreaterThanEqualAndWindowToLessThan(range.from(), range.to())) {
 			String target = PeerBenignBucket.OTHER_DST_IP.equals(bucket.getDstIp())

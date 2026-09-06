@@ -20,6 +20,7 @@ Traffic Handler는 Traffic Converter도 Anomaly Detector도 직접 알지 않는
 import inspect
 import logging
 import time
+from dataclasses import replace
 
 from .ports import Detection
 
@@ -57,8 +58,29 @@ def _with_latency(detection, latency_ms):
     """판정에 추론 지연을 실어 돌려준다. 이미 실려 있으면(0이 아니면) 유지한다."""
     if detection is None or detection.latency_ms:
         return detection
-    from dataclasses import replace
     return replace(detection, latency_ms=latency_ms)
+
+
+def _with_packets(detection, source, session_id):
+    """이상 판정에 그 판정이 본 윈도우의 패킷 메타를 실어 돌려준다.
+
+    정상 판정에는 붙이지 않는다 — 개별 이벤트로 나가지 않아 실을 곳이 없고, 트래픽
+    대부분이 정상이라 그만큼이 순수 낭비다.
+
+    메타를 낼 수 없는 구현(테스트 대역 등)이면 아무 일도 하지 않는다. window_meta는
+    선택 규약이지 TrafficConverter 프로토콜의 일부가 아니다.
+    """
+    if detection is None or not detection.is_malicious:
+        return detection
+    provider = getattr(source, "window_meta", None)
+    if not callable(provider):
+        return detection
+    try:
+        window = tuple(provider(session_id))
+    except Exception:
+        logger.exception("패킷 메타 수집 실패 — 판정은 그대로 진행")
+        return detection
+    return replace(detection, packets=window) if window else detection
 
 
 def _accepts_two_args(call):
@@ -97,7 +119,8 @@ class DetectionAdapter:
             start = time.perf_counter()
             result = self._detector.classify(session_id, image)
             latency_ms = (time.perf_counter() - start) * 1000.0
-            return _with_latency(_as_detection(result), latency_ms)
+            detection = _with_latency(_as_detection(result), latency_ms)
+            return _with_packets(detection, self._converter, session_id)
         except Exception:
             logger.exception("탐지 실패 — 판정 없음으로 처리(Forward)")
             return None
@@ -139,7 +162,11 @@ class FusedDetectionAdapter:
             )
             latency_ms = (time.perf_counter() - start) * 1000.0
             detection = _as_detection(result)
-            return _with_latency(detection, latency_ms) if detection is not None else None
+            if detection is None:
+                return None
+            return _with_packets(
+                _with_latency(detection, latency_ms), self._engine, session_id
+            )
         except Exception:
             logger.exception("탐지 실패 — 판정 없음으로 처리(Forward)")
             return None

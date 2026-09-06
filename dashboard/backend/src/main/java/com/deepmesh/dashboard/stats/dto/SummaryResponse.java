@@ -11,7 +11,7 @@ public record SummaryResponse(
 		long clearedCount,
 		long dropCount,
 		long relayCount,
-		double attackRate,
+		double anomalyRate,
 		double blockRate,
 		Double avgDetectionLatencyMs,
 		Double p95DetectionLatencyMs,

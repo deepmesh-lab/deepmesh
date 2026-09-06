@@ -9,9 +9,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.criteria.Predicate;
+import java.io.IOException;
+import java.io.Writer;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -33,6 +38,12 @@ public class EventQueryService {
 	private final ObjectMapper objectMapper;
 	/** 목적지 IP를 서비스 이름으로 되돌린다. 토폴로지 엣지와 같은 규칙을 쓴다. */
 	private final PeerNaming peerNaming;
+
+	/** 내려받기 청크. clampSize가 1~200만 허용하므로 그 상한을 그대로 쓴다. */
+	private static final int EXPORT_CHUNK = 200;
+	private static final ZoneOffset KST = ZoneOffset.ofHours(9);
+	private static final DateTimeFormatter CSV_TIME =
+			DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
 	@Transactional(readOnly = true)
 	public EventPageResponse list(EventQuery q) {
@@ -73,6 +84,51 @@ public class EventQueryService {
 		return EventDetailResponse.from(e, peerNaming.name(e), parsePackets(e.getPacketsJson()));
 	}
 
+	/**
+	 * 필터에 해당하는 이벤트 전체를 CSV로 흘려보낸다.
+	 *
+	 * <p>전부 메모리에 올리지 않는다. {@link #list}를 그대로 재사용해 청크로 끊어 읽고
+	 * 청크마다 flush한다 — 정렬·PeerNaming·hasNext 판정이 목록 조회와 어긋날 수 없다.
+	 * flush를 빼면 버퍼에 다 쌓여 스트리밍이 되지 않는다.
+	 */
+	@Transactional(readOnly = true)
+	public void exportCsv(EventQuery q, Writer out) throws IOException {
+		out.write(CsvWriter.BOM);
+		out.write(CsvWriter.headerLine());
+		out.flush();
+
+		Long cursor = null;
+		while (true) {
+			EventPageResponse page = list(new EventQuery(cursor, null, EXPORT_CHUNK,
+					q.verdicts(), q.categories(), q.serviceName(), q.podName(), q.direction(),
+					q.from(), q.to()));
+
+			for (EventResponse e : page.items()) {
+				out.write(CsvWriter.line(
+						e.occurredAt() == null ? null
+								: e.occurredAt().withOffsetSameInstant(KST).format(CSV_TIME),
+						e.verdict(),
+						e.serviceName(),
+						e.peerServiceName(),
+						e.podName(),
+						e.direction(),
+						decimal(e.ocsvmScore(), "%.4f"),
+						decimal(e.detectionLatencyMs(), "%.2f")));
+			}
+			out.flush();
+
+			if (!page.hasNext()) {
+				return;
+			}
+			cursor = Long.valueOf(page.nextCursor());
+		}
+	}
+
+	/** Locale.ROOT로 고정한다. 로캘에 따라 소수점이 쉼표가 되면 CSV가 통째로 어긋난다. */
+	private static String decimal(Double value, String pattern) {
+		return value == null ? null : String.format(Locale.ROOT, pattern, value);
+	}
+
 	private Specification<DetectionEvent> buildSpec(EventQuery q, boolean ascending) {
 		return (root, query, cb) -> {
 			List<Predicate> preds = new ArrayList<>();
@@ -84,6 +140,12 @@ public class EventQueryService {
 			}
 			if (q.verdicts() != null && !q.verdicts().isEmpty()) {
 				preds.add(root.get("verdict").in(q.verdicts()));
+			}
+			// verdict와 category는 1:1이 아니다. FORWARD 하나에 benign(정상 판정)과
+			// cleared(이상 판정 후 교차 검증 통과)가 모두 들어간다. 화면이 보여주는 것은
+			// category이므로 그쪽으로도 거를 수 있어야 한다.
+			if (q.categories() != null && !q.categories().isEmpty()) {
+				preds.add(root.get("category").in(q.categories()));
 			}
 			if (q.serviceName() != null) {
 				preds.add(cb.equal(root.get("serviceName"), q.serviceName()));
@@ -131,6 +193,7 @@ public class EventQueryService {
 			Long afterId,
 			Integer size,
 			List<String> verdicts,
+			List<String> categories,
 			String serviceName,
 			String podName,
 			String direction,

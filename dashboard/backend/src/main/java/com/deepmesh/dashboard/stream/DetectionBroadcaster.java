@@ -23,8 +23,16 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class DetectionBroadcaster {
 
-	/** 배치당 상한. 넘치면 cleared부터 버린다. */
+	/** 배치당 상한. 넘치면 benign → cleared 순으로 버린다. */
 	static final int BATCH_LIMIT = 100;
+
+	/**
+	 * 상한을 넘겼을 때 버리는 순서. 앞의 것부터 버린다.
+	 *
+	 * <p>benign이 가장 먼저다 — 판정이 정상이었고 집계로도 남아 있어, 실시간 화면에서
+	 * 빠져도 잃는 것이 가장 적다. drop·relay는 이 목록에 없어 절대 버려지지 않는다.
+	 */
+	private static final List<String> DISCARD_ORDER = List.of("benign", "cleared");
 
 	private final ConcurrentLinkedQueue<DetectionEvent> pending = new ConcurrentLinkedQueue<>();
 	private final SseHub hub;
@@ -62,9 +70,9 @@ public class DetectionBroadcaster {
 	}
 
 	/**
-	 * 상한을 넘치면 cleared부터 버린다. drop·relay는 절대 버리지 않는다 (명세 2-2) —
-	 * 실제로 차단·대체가 일어난 사건이라 화면에서 빠지면 안 된다. 그래서 drop·relay가
-	 * 상한보다 많으면 배치가 상한을 넘어서 나간다.
+	 * 상한을 넘치면 DISCARD_ORDER 순으로 버린다. drop·relay는 절대 버리지 않는다
+	 * (명세 2-2) — 실제로 차단·대체가 일어난 사건이라 화면에서 빠지면 안 된다. 그래서
+	 * drop·relay가 상한보다 많으면 배치가 상한을 넘어서 나간다.
 	 *
 	 * @return 버린 수
 	 */
@@ -74,10 +82,15 @@ public class DetectionBroadcaster {
 			return 0;
 		}
 		int dropped = 0;
-		for (int i = batch.size() - 1; i >= 0 && dropped < excess; i--) {
-			if ("cleared".equals(batch.get(i).getCategory())) {
-				batch.remove(i);
-				dropped++;
+		for (String category : DISCARD_ORDER) {
+			for (int i = batch.size() - 1; i >= 0 && dropped < excess; i--) {
+				if (category.equals(batch.get(i).getCategory())) {
+					batch.remove(i);
+					dropped++;
+				}
+			}
+			if (dropped >= excess) {
+				break;
 			}
 		}
 		return dropped;

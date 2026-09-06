@@ -70,6 +70,38 @@ class TestDetectionAdapter:
         assert DetectionAdapter(Broken(), RecordingDetector()).analyze(1, FRAME) is None
 
 
+class Test판정윈도우패킷:
+    """window_meta는 선택 규약이다 — 없으면 조용히 넘어가고, 있으면 이상 판정에만 붙는다."""
+
+    class MetaConverter(RecordingConverter):
+        def window_meta(self, session_id):
+            return ({"seq": 1},)
+
+    def test_이상_판정에는_윈도우_메타가_붙는다(self):
+        adapter = DetectionAdapter(self.MetaConverter(["img"]), RecordingDetector())
+        assert adapter.analyze(7, FRAME).packets == ({"seq": 1},)
+
+    def test_정상_판정에는_붙이지_않는다(self):
+        """정상 시퀀스는 개별 이벤트로 나가지 않아 실을 곳이 없다."""
+        detector = RecordingDetector(Detection(is_malicious=False, score=0.3))
+        adapter = DetectionAdapter(self.MetaConverter(["img"]), detector)
+        assert adapter.analyze(7, FRAME).packets == ()
+
+    def test_window_meta가_없어도_판정은_그대로다(self):
+        adapter = DetectionAdapter(RecordingConverter(["img"]), RecordingDetector())
+        detection = adapter.analyze(7, FRAME)
+        assert detection.is_malicious and detection.packets == ()
+
+    def test_메타_수집이_실패해도_판정은_살아남는다(self):
+        class Broken(RecordingConverter):
+            def window_meta(self, session_id):
+                raise RuntimeError("boom")
+
+        adapter = DetectionAdapter(Broken(["img"]), RecordingDetector())
+        detection = adapter.analyze(7, FRAME)
+        assert detection.is_malicious and detection.packets == ()
+
+
 class TestFusedDetectionAdapter:
     def test_한_호출로_끝나는_구현을_받는다(self):
         class Engine:

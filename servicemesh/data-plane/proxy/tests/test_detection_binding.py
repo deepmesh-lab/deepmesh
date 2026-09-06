@@ -140,6 +140,47 @@ class TestModelConverter:
         assert seen[0].fields[-1] > 0
 
 
+class TestModelConverter윈도우메타:
+    """판정 화면이 보여줄 패킷 메타. 모델이 본 그 윈도우와 정확히 같아야 한다."""
+
+    def test_윈도우가_차기_전에도_쌓인_만큼_돌려준다(self):
+        converter = build()
+        converter.push(7, b"frame")
+        converter.push(7, b"frame")
+        assert len(converter.window_meta(7)) == 2
+
+    def test_판정_시점의_메타는_윈도우_크기와_같다(self):
+        converter = build()
+        for _ in range(WIN_SIZE):
+            converter.push(7, b"frame")
+        meta = converter.window_meta(7)
+        assert len(meta) == WIN_SIZE
+        assert [m["seq"] for m in meta] == list(range(1, WIN_SIZE + 1))
+
+    def test_extract가_거른_프레임은_메타에도_없다(self):
+        """벡터와 메타를 따로 쌓으면 여기서 길이가 어긋난다."""
+        converter = build(converter=FakeConverter(extract_result=None))
+        for _ in range(WIN_SIZE):
+            converter.push(7, b"frame")
+        assert converter.window_meta(7) == ()
+
+    def test_파싱한_필드가_메타에_그대로_담긴다(self):
+        # frame_info: (sid, src_ip, dst_ip, dst_port, tcp_flags, payload, iplen)
+        common = FakeCommon(parsed=(1, 2, 0x0AF40225, 8080, 0x18, b"hello", 60))
+        converter = build(common=common)
+        converter.push(7, b"frame")
+        meta = converter.window_meta(7)[0]
+        assert meta["dstIp"] == "10.244.2.37"
+        assert meta["dstPort"] == 8080
+        assert meta["flags"] == "PSH,ACK"
+        assert meta["length"] == 60
+        assert meta["payloadLength"] == 5
+        assert "hello" not in str(meta)   # 본문은 담지 않는다
+
+    def test_모르는_세션은_빈_튜플(self):
+        assert build().window_meta(999) == ()
+
+
 class TestModelConverter세션상한:
     def test_상한을_넘으면_오래된_세션부터_버린다(self):
         converter = build(window_cap=2)

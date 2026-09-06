@@ -197,3 +197,43 @@ def test_창이_끝나면_목적지_집계가_비워진다():
     payload = _flush_payload(client)
     assert payload["peerStats"] == [{"dstIp": "10.0.0.7", "benign": 1}]
     assert payload["peerCount"] == 1
+
+
+# --- 판정 윈도우 패킷 ---------------------------------------------------------
+
+def test_패킷이_없으면_키_자체를_넣지_않는다():
+    """빈 배열로 보내면 "수집했는데 0개"로 읽힌다. 아예 없는 것과 구분해야 한다."""
+    e = build_event(obs(), "DROP", "drop", "REQUEST_VERIFIER", False, "sig")
+    assert "packets" not in e and "windowSize" not in e
+
+
+def test_패킷이_있으면_windowSize와_함께_실린다():
+    window = ({"seq": 1, "length": 60}, {"seq": 2, "length": 1460})
+    observation = SessionObservation(
+        detection=Detection(is_malicious=True, score=-0.41, packets=window),
+        direction="REQUEST",
+        src_ip="10.244.1.5", src_port=48812, dst_ip="10.96.0.1", dst_port=443,
+    )
+    e = build_event(observation, "DROP", "drop", "REQUEST_VERIFIER", False, "sig")
+    assert e["windowSize"] == 2
+    assert [p["seq"] for p in e["packets"]] == [1, 2]
+
+
+def test_benign_이벤트가_목적지별_집계까지_올린다():
+    """네 분류의 집계 지점은 emit() 하나뿐이다. peerStats도 여기서 나온다."""
+    c = TelemetryClient("http://x", PROXY_META)
+    for _ in range(3):
+        c.emit(build_event(obs(), "FORWARD", "benign", None, None, "sig",
+                           model_verdict="BENIGN"))
+    payload = _flush_payload(c)
+    assert payload["windowStats"]["benign"] == 3
+    assert payload["peerStats"] == [{"dstIp": "10.96.0.1", "benign": 3}]
+
+
+def test_queue가_False여도_집계는_오른다():
+    c = TelemetryClient("http://x", PROXY_META)
+    c.emit(build_event(obs(), "FORWARD", "benign", None, None, "sig",
+                       model_verdict="BENIGN"), queue=False)
+    payload = _flush_payload(c)
+    assert payload["windowStats"]["benign"] == 1
+    assert payload["events"] == []

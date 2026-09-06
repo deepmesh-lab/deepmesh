@@ -34,6 +34,7 @@ import time
 from collections import OrderedDict, deque
 
 from . import config
+from . import packets
 from .ports import Detection
 
 logger = logging.getLogger("traffic-handler.detection-binding")
@@ -93,20 +94,38 @@ class ModelConverter:
 
         # ts는 frame_info가 주지 않는 값이다. 학습 때는 pcap 타임스탬프였고 런타임에는
         # 프레임을 잡은 시각이 그 자리를 대신한다.
+        # 캡처 시각은 지역 변수로 잡아 둔다. Packet에서 다시 꺼내 쓰면 Packet의 필드
+        # 이름에 의존하게 되는데, 그건 컨버터 쪽 자료구조지 우리 것이 아니다.
+        captured_at = time.time()
         packet = self._common.Packet(
-            sid, src_ip, dst_ip, dst_port, tcp_flags, payload, iplen, time.time()
+            sid, src_ip, dst_ip, dst_port, tcp_flags, payload, iplen, captured_at
         )
         extracted = self._converter.extract(packet)
         if extracted is None:
             return None  # 탐지 대상 아님 -> 판정 없이 Forward
 
         window = self._window(session_id)
-        window.append(extracted[0])
+        # 벡터와 메타를 **같은 deque에 짝으로** 넣는다. 따로 두면 extract()가 걸러낸
+        # 프레임 때문에 둘의 길이가 어긋나, 화면이 판정과 무관한 패킷을 보여주게 된다.
+        window.append((extracted[0], packets.packet_meta(
+            dst_ip, dst_port, tcp_flags, len(payload), iplen, captured_at,
+        )))
         if len(window) < self._common.WIN_SIZE:
             return None
         # deque(maxlen=WIN_SIZE)라 가장 오래된 벡터는 append가 알아서 밀어낸다
         # (Algorithm 1 line 24, RemoveOldest).
-        return self._converter.to_image(list(window))
+        return self._converter.to_image([vector for vector, _ in window])
+
+    def window_meta(self, session_id):
+        """방금 판정에 쓰인 윈도우의 패킷 메타. 윈도우가 없으면 빈 튜플.
+
+        push()가 이미지를 돌려준 직후에만 의미가 있다 — 그때의 deque 내용이 곧 모델에
+        들어간 그 윈도우다.
+        """
+        window = self._windows.get(session_id)
+        if not window:
+            return ()
+        return tuple(packets.numbered(meta for _, meta in window))
 
     def _window(self, session_id):
         window = self._windows.get(session_id)

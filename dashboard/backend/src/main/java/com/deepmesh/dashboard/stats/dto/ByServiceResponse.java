@@ -16,7 +16,7 @@ public record ByServiceResponse(
 			long cleared,
 			long drop,
 			long relay,
-			double attackRate,
+			double anomalyRate,
 			double blockRate
 	) {
 	}

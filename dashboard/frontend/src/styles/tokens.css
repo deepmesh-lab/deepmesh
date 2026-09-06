@@ -1,0 +1,157 @@
+/**
+ * 컬러 시스템 — 이 파일이 색을 정의하는 유일한 곳이다.
+ *
+ * 3단 구조다. 위에서 아래로만 참조하며, 화면 코드는 3단만 쓴다.
+ *
+ *   1. 원색 스케일   --brand-* / --palette-*   실제 색 값(hex)이 있는 유일한 층
+ *   2. 역할 토큰     --color-*                 primary / secondary / success / warning / danger / info
+ *   3. 용도 토큰     --verdict-* 등            판정 4분류처럼 이 화면 고유의 의미
+ *
+ * 브랜드를 갈아끼우려면 1단의 --brand-primary-* / --brand-secondary-* 값만 바꾸면 된다.
+ * 2·3단과 컴포넌트 CSS는 손대지 않는다.
+ *
+ * 현재 적용: ETRI CI
+ *   Blue   R0 G102 B165  #0066A5  (인쇄 C100 M60 Y10)
+ *   Orange R241 G90 B34  #F15A22  (인쇄 M80 Y100)
+ *   ─ 출처: https://www.etri.re.kr/korcon/sub7/sub7_11.etri
+ *     Blue의 R 값은 원문에 생략되어 있어 0으로 읽었다(CMYK C100과 일치).
+ */
+
+:root {
+  /* ── 1단 · 브랜드 원색 ─────────────────────────────────────────── */
+
+  /* ETRI Blue */
+  --brand-primary-050: #e8f1f7;
+  --brand-primary-100: #cce0ee;
+  --brand-primary-300: #66a3c9;
+  --brand-primary-500: #0066a5;
+  --brand-primary-600: #005a93;
+  --brand-primary-700: #004e7f;
+  --brand-primary-800: #003d61;
+  --brand-primary-900: #00304d;
+
+  /* ETRI Orange */
+  --brand-secondary-050: #fdeee8;
+  --brand-secondary-100: #fbd9cb;
+  --brand-secondary-300: #f79b75;
+  --brand-secondary-500: #f15a22;
+  --brand-secondary-600: #d94813;
+  --brand-secondary-700: #b03a0f;
+
+  /* ── 1단 · 상태 원색 ───────────────────────────────────────────
+     CI에 없는 색이다. 정상/차단은 의미 전달이 우선이라 브랜드와 분리해 둔다.
+     danger는 ETRI Orange와 구분되도록 색상환에서 더 붉고 어두운 쪽으로 잡았다. */
+  --palette-green-050: #e7f6ed;
+  --palette-green-500: #16a34a;
+  --palette-green-600: #12833c;
+
+  --palette-red-050: #fbe9ec;
+  --palette-red-100: #f6c9d0;
+  --palette-red-500: #c8102e;
+  --palette-red-600: #a50d26;
+
+  /* ── 1단 · 중립 스케일 ─────────────────────────────────────────── */
+  --palette-neutral-000: #ffffff;
+  --palette-neutral-025: #f7f9fc;
+  --palette-neutral-050: #f1f5f9;
+  --palette-neutral-100: #eff3f7;
+  --palette-neutral-200: #e4eaf0;
+  --palette-neutral-300: #cbd5e1;
+  --palette-neutral-400: #94a3b8;
+  --palette-neutral-500: #64748b;
+  --palette-neutral-900: #0f172a;
+
+  /* ── 2단 · 역할 토큰 ───────────────────────────────────────────── */
+
+  --color-primary: var(--brand-primary-500);
+  --color-primary-strong: var(--brand-primary-700);
+  --color-primary-border: var(--brand-primary-300);
+  --color-primary-weak: var(--brand-primary-050);
+  --color-on-primary: var(--palette-neutral-000);
+
+  --color-secondary: var(--brand-secondary-500);
+  --color-secondary-strong: var(--brand-secondary-700);
+  --color-secondary-border: var(--brand-secondary-300);
+  --color-secondary-weak: var(--brand-secondary-050);
+
+  --color-success: var(--palette-green-500);
+  --color-success-strong: var(--palette-green-600);
+  --color-success-weak: var(--palette-green-050);
+  --color-success-glow: rgba(22, 163, 74, 0.55);
+
+  /* 경고는 브랜드 보조색을 그대로 쓴다 */
+  --color-warning: var(--brand-secondary-500);
+  --color-warning-strong: var(--brand-secondary-700);
+  --color-warning-border: var(--brand-secondary-100);
+  --color-warning-weak: var(--brand-secondary-050);
+
+  --color-danger: var(--palette-red-500);
+  --color-danger-strong: var(--palette-red-600);
+  --color-danger-border: var(--palette-red-100);
+  --color-danger-weak: var(--palette-red-050);
+
+  /* 정보는 브랜드 주조색을 그대로 쓴다 */
+  --color-info: var(--brand-primary-500);
+  --color-info-strong: var(--brand-primary-700);
+  --color-info-weak: var(--brand-primary-050);
+
+  /* ── 2단 · 표면과 글자 ─────────────────────────────────────────── */
+  --color-bg: var(--palette-neutral-025);
+  --color-surface: var(--palette-neutral-000);
+  --color-surface-hover: var(--palette-neutral-025);
+  --color-surface-sunken: var(--palette-neutral-050);
+
+  --color-border: var(--palette-neutral-200);
+  --color-border-subtle: var(--palette-neutral-100);
+  --color-border-strong: var(--palette-neutral-300);
+
+  --color-text: var(--palette-neutral-900);
+  --color-text-muted: var(--palette-neutral-500);
+  --color-text-subtle: var(--palette-neutral-400);
+  --color-text-disabled: var(--palette-neutral-300);
+
+  /* 헤더처럼 어두운 표면 위.
+     사이드바는 헤더보다 한 단계 밝게 둬서 같은 계열이되 면이 구분되게 한다. */
+  --color-header-bg: var(--brand-primary-900);
+  --color-sidebar-bg: var(--brand-primary-800);
+  --color-sidebar-border: #01598a;
+  --color-header-text: #c5d8e4;
+  --color-header-text-muted: #7fa3b8;
+  --color-header-control-bg: #0a4468;
+  --color-header-control-border: #1b5a82;
+
+  --color-scrim: rgba(0, 48, 77, 0.38);
+  --color-shadow: rgba(0, 48, 77, 0.09);
+
+  /* ── 3단 · 판정 4분류 (명세 1-1) ───────────────────────────────
+     benign=정상 전달, cleared=교차 검증 통과, drop=요청 차단, relay=응답 대체 */
+  --verdict-benign: var(--color-success);
+  --verdict-benign-weak: var(--color-success-weak);
+
+  --verdict-cleared: var(--color-info);
+  --verdict-cleared-weak: var(--color-info-weak);
+
+  --verdict-drop: var(--color-danger);
+  --verdict-drop-weak: var(--color-danger-weak);
+  --verdict-drop-border: var(--color-danger-border);
+
+  --verdict-relay: var(--color-warning);
+  --verdict-relay-weak: var(--color-warning-weak);
+  --verdict-relay-border: var(--color-warning-border);
+  /* 주황 원색은 흰 배경에서 글자로 쓰기엔 대비가 모자라 어두운 단계를 쓴다 */
+  --verdict-relay-text: var(--color-warning-strong);
+
+  /* 토폴로지 간선 기본색 */
+  --color-edge: var(--palette-neutral-300);
+
+  /* ── 타이포·형태 ───────────────────────────────────────────────── */
+  /* API 경로·null 같은 값은 글꼴이 아니라 회색 배경으로 구분한다. 서체는 하나로 간다. */
+  --code-bg: var(--palette-neutral-050);
+  --code-text: var(--brand-primary-700);
+
+  /* main.tsx가 번들에서 직접 불러온다. 뒤는 로드 실패 시 대체 스택. */
+  --sans: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    'Malgun Gothic', sans-serif;
+  --r: 8px;
+  --sh: 0 1px 2px rgba(0, 48, 77, 0.06);
+}

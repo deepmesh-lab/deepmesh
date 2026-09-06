@@ -15,7 +15,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 프록시가 ATTACK으로 판정한 개별 시퀀스(cleared/drop/relay).
+ * 프록시 집행 경로가 남긴 개별 판정(benign/cleared/drop/relay).
+ *
+ * <p>HTTP 메시지 1건당 1행이다. StatsBucket·PeerBenignBucket의 집계는 패킷 윈도우
+ * 단위라 훨씬 큰 수가 나온다 — 두 숫자가 다른 것은 세는 단위가 다르기 때문이다.
  *
  * <p>필드는 backend-frontend-api.md의 이벤트 스키마를 따른다. 프록시가 보내는 값은
  * TELEMETRY_API.md 계약에서 오며, 백엔드가 채우는 값(peerServiceName, summary)은
