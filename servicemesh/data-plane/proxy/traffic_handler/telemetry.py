@@ -192,6 +192,8 @@ def build_event(observation, verdict, category, stage, passed, signature, protoc
         "protocol": protocol,
         "modelVerdict": model_verdict,
         "ocsvmScore": observation.score,
+        # 판정 기준 점수. ocsvmScore < threshold 이면 ATTACK이다. 모르면 null.
+        "threshold": getattr(observation, "threshold", None),
         "verdict": verdict,
         "category": category,
         "verificationStage": stage,

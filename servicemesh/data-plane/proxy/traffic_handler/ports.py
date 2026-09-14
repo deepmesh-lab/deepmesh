@@ -55,6 +55,9 @@ class Detection:
     score: float = 0.0
     # 이 판정을 만드는 데 걸린 모델 추론 시간(ms). 측정 전이면 0.0.
     latency_ms: float = 0.0
+    # 판정 기준 점수. score < threshold 이면 이상이다. 기준을 모르는 구현이면 None —
+    # 0으로 채우면 "기준이 0"으로 읽힌다.
+    threshold: Optional[float] = None
     # 판정에 쓰인 윈도우의 패킷 메타(packets.py). 이상 판정일 때만 채운다 —
     # 정상 시퀀스는 개별 이벤트로 나가지 않아 실을 곳이 없다. tuple인 이유는
     # 이 dataclass가 frozen이라서다.
@@ -95,6 +98,10 @@ class SessionObservation:
     @property
     def latency_ms(self):
         return self.detection.latency_ms
+
+    @property
+    def threshold(self):
+        return self.detection.threshold
 
     @property
     def packets(self):

@@ -64,6 +64,7 @@ Content-Type: application/json
       "protocol": "TCP",
       "modelVerdict": "ATTACK",
       "ocsvmScore": -0.4127,
+      "threshold": -0.1430,
       "verdict": "DROP",
       "category": "drop",
       "verificationStage": "REQUEST_VERIFIER",
@@ -201,6 +202,7 @@ dstIp = 목적지 (peerServiceName 역매핑)
 |---|---|
 | `direction`, 5-tuple, `sessionId`, `ocsvmScore`, `verdict`, `category`, `signature`, `verification*` | **지금 가능** — 프레임 파싱 + 집행 결과로 채움 |
 | `detectionLatencyMs` | **채움** — 어댑터가 classify 호출 전후로 측정 |
+| `threshold` | **채움** — 서비스 모델의 `threshold.json`(`threshold_df`). `ocsvmScore < threshold`면 ATTACK. 기준을 모르는 탐지 구현이면 `null` |
 | `packets[]`·`windowSize` | **채움** — Converter가 벡터를 쌓는 자리에서 메타도 같이 쌓고(`ModelConverter.window_meta`), 어댑터가 이상 판정에만 실어 보낸다. 정상 판정에는 붙이지 않는다 |
 | `modelId` | Anomaly Detector 결합 시 확정 |
 

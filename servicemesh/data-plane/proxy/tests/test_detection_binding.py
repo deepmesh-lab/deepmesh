@@ -65,9 +65,11 @@ class FakeConverter:
 
 
 class FakeVerdict:
-    def __init__(self, is_benign, score):
+    def __init__(self, is_benign, score, threshold=None):
         self.is_benign = is_benign
         self.score = score
+        if threshold is not None:
+            self.threshold = threshold
 
 
 class FakeDetector:
@@ -213,6 +215,15 @@ class TestModelDetector:
         detection = detector.classify(7, "image")
         assert detection.is_malicious is True
         assert detection.score == -2.0
+
+    def test_기준_점수를_함께_넘긴다(self):
+        detector = ModelDetector(
+            FakeDetector(FakeVerdict(is_benign=False, score=-20.0, threshold=-13.96)))
+        assert detector.classify(7, "image").threshold == -13.96
+
+    def test_기준_점수가_없으면_None이다(self):
+        detector = ModelDetector(FakeDetector(FakeVerdict(is_benign=True, score=1.5)))
+        assert detector.classify(7, "image").threshold is None
 
     def test_세션_id와_이미지를_그대로_넘긴다(self):
         inner = FakeDetector(FakeVerdict(is_benign=True, score=0.0))

@@ -201,6 +201,22 @@ def test_창이_끝나면_목적지_집계가_비워진다():
 
 # --- 판정 윈도우 패킷 ---------------------------------------------------------
 
+def test_build_event가_기준_점수를_싣는다():
+    observation = SessionObservation(
+        detection=Detection(is_malicious=True, score=-20.0, threshold=-13.96),
+        direction="REQUEST",
+        src_ip="10.244.1.5", src_port=48812, dst_ip="10.96.0.1", dst_port=443,
+    )
+    e = build_event(observation, "DROP", "drop", "REQUEST_VERIFIER", False, "sig")
+    assert e["threshold"] == -13.96
+
+
+def test_기준_점수를_모르면_null로_보낸다():
+    """0으로 채우면 "기준이 0"으로 읽힌다."""
+    e = build_event(obs(), "DROP", "drop", "REQUEST_VERIFIER", False, "sig")
+    assert e["threshold"] is None
+
+
 def test_패킷이_없으면_키_자체를_넣지_않는다():
     """빈 배열로 보내면 "수집했는데 0개"로 읽힌다. 아예 없는 것과 구분해야 한다."""
     e = build_event(obs(), "DROP", "drop", "REQUEST_VERIFIER", False, "sig")
