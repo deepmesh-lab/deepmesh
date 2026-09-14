@@ -193,6 +193,45 @@ function perimeterPoint(
   return { x: left - gap, y: top + height - rest }
 }
 
+/**
+ * 알약(stadium) 둘레에서, 중심에서 `toward`로 뻗은 직선이 뚫고 나오는 점.
+ *
+ * Pod는 알약이다. 두 Pod의 **중심끼리 이은 직선**이 각자의 경계를 뚫는 점에 끝을 두면
+ * 선은 곧 두 알약 사이의 최단 직선이 된다. 접합점 칸으로 스냅하지 않는다 — 스냅하면 끝이
+ * 직선에서 벗어나 선이 비스듬해진다.
+ *
+ * 알약 = 가운데 직사각형(가로 halfWidth-radius) + 좌우 반원(radius = 높이의 절반).
+ * 먼저 위·아래 평평한 변에 닿는지 보고, 아니면 가까운 쪽 반원과의 교점을 푼다.
+ */
+export function capsuleAnchor(
+  node: InternalNode<Node>,
+  toward: Point,
+  gap: number,
+): Point {
+  const center = centerOf(node)
+  const halfWidth = (node.measured.width ?? 0) / 2
+  const radius = (node.measured.height ?? 0) / 2
+  const dx = toward.x - center.x
+  const dy = toward.y - center.y
+  const length = Math.hypot(dx, dy) || 1
+  const ux = dx / length
+  const uy = dy / length
+  const core = Math.max(halfWidth - radius, 0)
+
+  const flatT = uy === 0 ? Number.POSITIVE_INFINITY : radius / Math.abs(uy)
+  let t: number
+  if (Math.abs(ux * flatT) <= core) {
+    t = flatT
+  } else {
+    // 반원 중심 k = (±core, 0). |t·u − k| = radius 의 큰 근이 바깥 경계다.
+    const kx = Math.sign(ux) * core
+    const dot = ux * kx
+    t = dot + Math.sqrt(Math.max(dot * dot - kx * kx + radius * radius, 0))
+  }
+
+  return { x: center.x + ux * (t + gap), y: center.y + uy * (t + gap) }
+}
+
 /** 원 둘레에도 같은 규칙 — `slots`등분한 자리에만 간선이 붙는다. */
 export function circleAnchor(
   center: Point,

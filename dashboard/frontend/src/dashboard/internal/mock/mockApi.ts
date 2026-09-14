@@ -133,20 +133,29 @@ export function buildTopologyNodes(fromMs: number, toMs: number): TopologyNode[]
   })
 }
 
+/**
+ * 구간 안에 판정이 있는 간선만 내려준다.
+ *
+ * 실제 백엔드(TopologyService.buildEdges)는 구간 안의 집계·이벤트로만 간선을 만들어 트래픽이
+ * 0인 간선은 애초에 없다. 목이 저장소의 모든 경로를 그대로 내려주면, 평시 유휴 경로와 구간이
+ * 지난 공격 경로가 회색 점선으로 남아 LIVE와 화면이 달라진다.
+ */
 export function buildTopologyEdges(fromMs: number, toMs: number): TopologyEdge[] {
-  return getEdges().map((edge) => {
-    const counts = edgeCountsInRange(edge.id, fromMs, toMs)
-    return {
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      protocol: edge.protocol,
-      total: totalOf(counts),
-      counts,
-      lastVerdict: edge.lastVerdict,
-      lastEventAt: edge.lastEventAt,
-    }
-  })
+  return getEdges()
+    .map((edge) => {
+      const counts = edgeCountsInRange(edge.id, fromMs, toMs)
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        protocol: edge.protocol,
+        total: totalOf(counts),
+        counts,
+        lastVerdict: edge.lastVerdict,
+        lastEventAt: edge.lastEventAt,
+      }
+    })
+    .filter((edge) => edge.total > 0)
 }
 
 // ── 이벤트 필터링 (목 스트림 재전송과 공유) ─────────────────────────────

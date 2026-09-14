@@ -3,6 +3,27 @@ import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import type { NodeKind, PodDetail, TopologyNode } from '../../internal/types'
 import k8sIcon from '../../../assets/icons/k8s_icon.svg'
 import k8sApiIcon from '../../../assets/icons/k8s_api_icon.png'
+import mysqlIcon from '../../../assets/icons/mysql_icon.svg'
+import nginxIcon from '../../../assets/icons/nginx_icon.svg'
+import springIcon from '../../../assets/icons/spring_icon.svg'
+import { nodeIdOf } from '../../internal/verdict'
+
+/**
+ * 서비스별 기술 아이콘. Pod 원 안에 들어간다.
+ *
+ * frontend는 React로 만든 화면이지만 Pod에서 실제로 도는 것은 그 정적 파일을 내주는
+ * nginx다 — 사이드카가 관측하는 응답(r1)도 nginx가 낸 것이다.
+ *
+ * 키는 노드 id(`-service` 뗀 이름)다. LIVE는 serviceName이 `post-service`로 온다.
+ * 여기 없는 서비스는 기본 Pod 글리프를 쓴다.
+ */
+const SERVICE_ICON: Record<string, string> = {
+  frontend: nginxIcon,
+  post: springIcon,
+  comment: springIcon,
+  auth: springIcon,
+  mysql: mysqlIcon,
+}
 
 /** 노드 종류를 글리프로 구분한다. */
 export function KindGlyph({ kind }: { kind: NodeKind }) {
@@ -107,9 +128,26 @@ function shortPodName(podName: string) {
   return parts[parts.length - 1] || podName
 }
 
+/** Pod 글리프 — 정육면체. 상태가 평소일 때 원 안에 들어간다. */
+function PodGlyph() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M10 2.6 L16.4 6.3 V13.7 L10 17.4 L3.6 13.7 V6.3 Z" />
+      <path d="M3.6 6.3 L10 10 L16.4 6.3 M10 10 V17.4" />
+    </svg>
+  )
+}
+
+/**
+ * Pod 하나 — **알약** 모양. 왼쪽 원에 상태 아이콘, 오른쪽에 이름.
+ *
+ * 간선은 알약의 바깥 경계에 붙는다(VerdictEdge·VerifyEdge의 capsuleAnchor).
+ * 원 안 아이콘은 가장 급한 상태 하나만 보인다 — 침해(!) > 프록시 미준비(×) > 평소(기술 아이콘).
+ */
 export function PodNode({ data }: NodeProps<PodFlowNode>) {
   const { pod } = data
   const compromised = pod.status === 'COMPROMISED'
+  const icon = SERVICE_ICON[nodeIdOf(data.serviceName)]
 
   return (
     <div
@@ -120,8 +158,15 @@ export function PodNode({ data }: NodeProps<PodFlowNode>) {
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
       <span className="disc">
-        {compromised ? '!' : ''}
-        {!pod.proxyReady ? '×' : ''}
+        {compromised ? (
+          '!'
+        ) : !pod.proxyReady ? (
+          '×'
+        ) : icon ? (
+          <img src={icon} alt="" aria-hidden="true" />
+        ) : (
+          <PodGlyph />
+        )}
       </span>
       <span className="pod-name">{shortPodName(pod.podName)}</span>
     </div>

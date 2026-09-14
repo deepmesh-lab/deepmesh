@@ -11,12 +11,12 @@ import type { TopologyEdge } from '../../internal/types'
 import { formatKstTime } from '../../internal/time'
 import { displayCountOf } from '../../internal/verdict'
 import {
-  CIRCLE_SLOTS,
   EDGE_GAP,
   RECT_SLOT_SPACING,
   arrowHead,
+  capsuleAnchor,
   centerOf,
-  circleAnchor,
+  exitPoint,
   rectAnchor,
   selfLoop,
   shift,
@@ -38,10 +38,10 @@ export type VerdictEdgeData = Record<string, unknown> & {
   /** 같은 노드 쌍의 간선이 겹치지 않도록 가운데를 부풀리는 정도 */
   offset: number
   /**
-   * forward 가닥에만 의미가 있다. 방금 새 트래픽이 흘렀으면 true —
-   * 흐린 선 위로 점선이 방향대로 흐른다.
+   * forward 가닥에만 의미가 있다. 평소 forward는 점선이 방향대로 흐르고,
+   * 방금 FORWARD 이벤트가 들어온 경로면 true — 1초간 굵은 실선으로 바뀐다.
    */
-  flowing: boolean
+  pulse: boolean
   isFresh: boolean
   /** 클릭해서 검증 과정을 펼칠 수 있는 간선인지 */
   inspectable: boolean
@@ -57,25 +57,13 @@ const KIND_LABEL: Record<EdgeKind, string> = {
   relay: '응답 대체 (relay)',
 }
 
-/** `.pod-node`의 원 위치 — padding-left 6px + 지름 26px. VerifyEdge와 같은 값이다. */
-const DISC_CENTER_X = 6 + 13
-const DISC_RADIUS = 13
-
 /**
- * Pod는 상자 가운데가 아니라 **왼쪽 원**이 실제 대상이다.
- * 자기 자신 간선을 Pod 사이로 그리면서 필요해졌다 — 상자 중심을 쓰면 선이 원에서
- * 떨어져 허공에 뜬 것처럼 보인다.
+ * 선의 한쪽 끝을 노드 경계에 붙인다.
+ *
+ * Pod(알약)와 구성요소 블록(API Server 등)은 **중심끼리 이은 직선이 경계를 뚫는 점**에
+ * 정확히 붙인다. 그래야 Pod → Pod, Pod → API Server가 최단 직선이 된다. 서비스 상자는
+ * 한 쌍 사이에 여러 가닥이 지나므로 기존처럼 옆으로 민 뒤 접합점 칸에 스냅한다.
  */
-function originOf(node: InternalNode<Node>): Point {
-  if (node.type === 'pod') {
-    return {
-      x: node.internals.positionAbsolute.x + DISC_CENTER_X,
-      y: node.internals.positionAbsolute.y + (node.measured.height ?? 0) / 2,
-    }
-  }
-  return centerOf(node)
-}
-
 function attachTo(
   node: InternalNode<Node>,
   origin: Point,
@@ -83,7 +71,13 @@ function attachTo(
   offset: number,
 ): Point {
   if (node.type === 'pod') {
-    return circleAnchor(origin, DISC_RADIUS, toward, CIRCLE_SLOTS, EDGE_GAP)
+    return capsuleAnchor(node, toward, EDGE_GAP)
+  }
+  if (node.type === 'component') {
+    const dx = toward.x - origin.x
+    const dy = toward.y - origin.y
+    const length = Math.hypot(dx, dy) || 1
+    return exitPoint(node, origin, { x: dx / length, y: dy / length }, EDGE_GAP)
   }
   const dx = toward.x - origin.x
   const dy = toward.y - origin.y
@@ -126,11 +120,10 @@ export function VerdictEdge({
   const straight = loop
     ? null
     : (() => {
-        // 선 전체를 나란히 민 뒤, 둘레의 가상 접합점 중 가장 가까운 칸에 붙인다.
-        // 이상적 지점이 조금이라도 다르면 반드시 다른 칸이라 시작·끝이 겹치지 않는다.
-        // Pod는 상자가 아니라 원 둘레에 붙는다.
-        const sourceOrigin = originOf(sourceNode)
-        const targetOrigin = originOf(targetNode)
+        // 서비스 상자는 선 전체를 나란히 민 뒤, 둘레의 가상 접합점 중 가장 가까운 칸에 붙인다.
+        // Pod·구성요소 블록은 중심끼리 이은 직선이 경계를 뚫는 점에 그대로 붙는다(attachTo).
+        const sourceOrigin = centerOf(sourceNode)
+        const targetOrigin = centerOf(targetNode)
 
         const from = attachTo(sourceNode, sourceOrigin, targetOrigin, offset)
         const to = attachTo(targetNode, targetOrigin, sourceOrigin, offset)
@@ -161,19 +154,19 @@ export function VerdictEdge({
       : 1
 
   const flow = { ['--fd' as string]: `${period.toFixed(2)}s` }
-  const flowing = kind === 'forward' && data?.flowing ? 'flowing' : ''
+  const pulse = kind === 'forward' && data?.pulse ? 'pulse' : ''
 
   return (
     <>
       <path
         d={path}
-        className={`verdict-edge ${kind} ${flowing} ${hovered ? 'hovered' : ''} ${data?.selected ? 'selected' : ''}`}
+        className={`verdict-edge ${kind} ${pulse} ${hovered ? 'hovered' : ''} ${data?.selected ? 'selected' : ''}`}
         style={flow}
       />
       {/* 화살촉도 path로 그린다. marker로는 흐름 상태에 맞춰 색을 바꿀 수 없다. */}
       <path
         d={arrowHead(to, heading)}
-        className={`verdict-arrow ${kind} ${flowing}`}
+        className={`verdict-arrow ${kind} ${pulse}`}
       />
       {/* 마우스를 받기 위한 투명한 두꺼운 선 */}
       <path

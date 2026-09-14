@@ -773,46 +773,87 @@ code,
   background: var(--palette-neutral-200);
 }
 
-/* Pod — 원 */
+/* Pod — 알약. 왼쪽 원에 상태 아이콘, 오른쪽에 이름.
+   간선은 이 알약의 바깥 경계에 붙는다(geometry.ts capsuleAnchor) */
 .pod-node {
-  width: 96px;
-  height: 42px;
+  width: 100px;
+  height: 34px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding-left: 6px;
+  gap: 6px;
+  padding: 0 8px 0 4px;
+  border: 1.5px solid var(--color-success);
+  border-radius: 999px;
+  background: var(--color-surface);
+  box-shadow: var(--sh);
 }
 
 .pod-node .disc {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   flex: none;
   border-radius: 50%;
-  background: var(--color-surface);
-  border: 2px solid var(--color-success);
-  box-shadow: var(--sh);
+  background: var(--color-success-weak);
+  color: var(--color-success);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 12px;
   font-weight: 800;
   line-height: 1;
-  color: var(--verdict-drop);
 }
 
-.pod-node.COMPROMISED .disc {
+/* 서비스 기술 아이콘(nginx·Spring·MySQL). 원래 색을 살리도록 원 배경은 흰색으로 둔다 */
+.pod-node .disc img {
+  width: 16px;
+  height: 16px;
+  display: block;
+  object-fit: contain;
+}
+
+.pod-node .disc:has(img) {
+  background: var(--color-surface);
+  box-shadow: inset 0 0 0 1px var(--color-border-subtle);
+}
+
+.pod-node .disc svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pod-node.COMPROMISED {
   border-color: var(--verdict-drop);
   background: var(--verdict-drop-weak);
 }
 
-.pod-node.DEGRADED .disc {
+.pod-node.COMPROMISED .disc {
+  background: var(--verdict-drop);
+  color: var(--color-surface);
+}
+
+.pod-node.DEGRADED {
   border-color: var(--color-warning);
+}
+
+.pod-node.DEGRADED .disc {
   background: var(--color-warning-weak);
+  color: var(--color-warning-strong);
+}
+
+.pod-node.UNMONITORED {
+  border-color: var(--color-text);
 }
 
 .pod-node.UNMONITORED .disc {
-  border-color: var(--color-text);
   background: var(--palette-neutral-100);
+  color: var(--color-text);
 }
 
 .pod-node .pod-name {
@@ -1280,20 +1321,22 @@ img.component-icon {
   stroke-dasharray: 4 6;
 }
 
-/* forward(benign+cleared)는 구간에 트래픽이 있으면 흐린 초록 실선으로 남는다.
-   방금 새 트래픽이 흘렀으면 진하게 바뀌고 점선이 source → target 방향으로 흐른다.
-   drop·relay보다 얇고 흐리게 둔다 — 평시 배경이지 사건이 아니다. */
+/* forward(benign+cleared)는 구간에 트래픽이 있으면 점선이 source → target 방향으로
+   계속 흐른다 — 평시 배경이다. drop·relay보다 얇고 조금 흐리게 둔다.
+   FORWARD 이벤트가 들어온 순간(.pulse)에는 drop·relay처럼 굵은 실선으로 1초간 바뀐다. */
 .verdict-edge.forward {
   stroke: var(--verdict-forward);
-  stroke-width: 2;
-  opacity: 0.32;
-  transition: opacity 0.3s ease;
-}
-
-.verdict-edge.forward.flowing {
-  opacity: 1;
+  stroke-width: 1.8;
+  opacity: 0.75;
   stroke-dasharray: 8 6;
   animation: forward-flow var(--fd, 1s) linear infinite;
+}
+
+.verdict-edge.forward.pulse {
+  stroke-width: 2.6;
+  opacity: 1;
+  stroke-dasharray: none;
+  animation: none;
 }
 
 /* dasharray 한 주기(8+6)만큼 음수로 밀면 점선이 경로 진행 방향으로 이동한다 */
@@ -1327,11 +1370,10 @@ img.component-icon {
 
 .verdict-arrow.forward {
   fill: var(--verdict-forward);
-  opacity: 0.32;
-  transition: opacity 0.3s ease;
+  opacity: 0.75;
 }
 
-.verdict-arrow.forward.flowing {
+.verdict-arrow.forward.pulse {
   opacity: 1;
 }
 
@@ -2283,7 +2325,7 @@ td:first-child {
 
   /* 간선 흐름은 장식이 아니라 "지금 트래픽이 흐르는가"를 나타내는 정보다.
      깜빡임이 아니라 점선의 연속 이동이라 광과민성 기준에도 걸리지 않으므로 유지한다. */
-  .verdict-edge.forward.flowing {
+  .verdict-edge.forward:not(.pulse) {
     animation: forward-flow var(--fd, 1s) linear infinite !important;
   }
 }

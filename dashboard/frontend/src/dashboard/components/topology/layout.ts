@@ -1,9 +1,10 @@
 import type { NodeKind, TopologyEdge, TopologyNode } from '../../internal/types'
 
 /** Pod 하나가 차지하는 자리 */
-export const POD_WIDTH = 96
-export const POD_HEIGHT = 42
-export const POD_ROW_HEIGHT = 50
+/** 알약 모양이라 높이가 낮고 가로가 조금 넓다. 서비스 상자(120) 안에 좌우 여백이 남는다. */
+export const POD_WIDTH = 100
+export const POD_HEIGHT = 34
+export const POD_ROW_HEIGHT = 44
 
 /** 프록시가 붙은 서비스 상자 */
 export const GROUP_WIDTH = 120
@@ -46,7 +47,7 @@ export const CONTROL_PLANE_PARTS: {
   flowId: string
   icon?: NodeKind
 }[] = [
-  { id: K8S_API_ID, label: 'API Server', flowId: K8S_API_ID, icon: 'K8S_API' },
+  { id: K8S_API_ID, label: 'Kubernetes API Server', flowId: K8S_API_ID, icon: 'K8S_API' },
   { id: 'verifier', label: 'Request Verifier', flowId: `${CONTROL_PLANE_ID}/verifier` },
   { id: 'provider', label: 'Pod Info Provider', flowId: `${CONTROL_PLANE_ID}/provider` },
 ]
@@ -82,7 +83,8 @@ export function isUnmonitoredWorkload(node: TopologyNode): boolean {
  *
  *   external → auth        행 1을 직진 — (1,1)·(1,2)를 비워 둔 이유
  *   post → comment         좌하 대각선 — 같은 두 칸을 지난다
- *   post → API Server      우하 대각선 — mysql과 auth 사이 행 간격을 지난다 (시나리오 1)
+ *   auth → API Server      바로 옆 칸 — 시나리오 1(k1)
+ *   frontend → post        바로 옆 칸 — 시나리오 2(r1). 변조 응답이 흘러간 방향
  *   comment → mysql        우상 대각선 — (1,2)를 지난다
  *
  * kubernetes는 격자에 없다. Master Node 상자 안의 블록으로 들어간다.

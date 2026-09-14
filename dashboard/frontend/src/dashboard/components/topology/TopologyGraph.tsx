@@ -20,7 +20,7 @@ import type {
 import { ComponentNode, PlainNode, PodNode, ServiceGroup } from './nodes'
 import { VerifyEdge, type VerifyFlowEdge } from './VerifyEdge'
 import { VerdictEdge, type EdgeKind, type VerdictFlowEdge } from './VerdictEdge'
-import { displayCountOf } from '../../internal/verdict'
+import { displayCountOf, nodeIdOf } from '../../internal/verdict'
 import {
   GROUP_HEAD_HEIGHT,
   GROUP_WIDTH,
@@ -65,7 +65,7 @@ const INSPECTABLE: EdgeKind[] = ['drop', 'relay']
 
 const PART_DESCRIPTION: Record<string, string> = {
   [K8S_API_ID]:
-    'Kubernetes API Server. 클러스터 리소스를 조회·변경하는 제어 창구입니다. 일반 서비스 Pod가 여기로 요청을 보내는 일은 평소 없어서, 감염된 Pod의 API 호출은 교차 검증에서 차단(DROP)됩니다.',
+    'Kubernetes API Server(kube-apiserver). 클러스터 리소스를 조회·변경하는 제어 창구입니다. 일반 서비스 Pod가 여기로 요청을 보내는 일은 평소 없어서, 감염된 Pod의 API 호출은 교차 검증에서 차단(DROP)됩니다.',
   verifier:
     '프록시가 보낸 요청 시그니처를 같은 ReplicaSet의 다른 Pod 이력과 대조합니다. 한 Pod에서만 관측된 요청이면 차단(DROP), 다른 replica에도 있으면 통과(CLEARED)시킵니다.',
   provider:
@@ -170,6 +170,16 @@ type TopologyGraphProps = {
   knownEdgeKeys: ReadonlySet<string>
   /** 짚고 있는 탐지 이벤트. 그 한 건의 Pod → Pod 경로를 따로 그린다. */
   focusedEvent: DetectionEvent | null
+  /**
+   * 간선 키(`간선ID#분류`) → 그 간선에 올라가 있는 이벤트.
+   * drop·relay 선을 서비스 상자가 아니라 **Pod 원끼리** 잇는 데 쓴다.
+   */
+  activeEvents: ReadonlyMap<string, DetectionEvent>
+  /**
+   * 방금 FORWARD 이벤트가 들어온 간선 id. 이 간선의 forward 가닥만 잠깐 굵은 실선이 된다.
+   * 집계 증가가 아니라 이벤트로 정한다 — 배경 트래픽은 매초 늘어 모든 선이 늘 굵어진다.
+   */
+  pulseEdgeIds: ReadonlySet<string>
 }
 
 /**
@@ -187,73 +197,6 @@ function isDrawn(
   return knownEdgeKeys.has(key) ? activeEdgeKeys.has(key) : true
 }
 
-/**
- * forward 가닥이 흐르는 시간. 토폴로지 갱신 주기(1~2초)보다 길게 잡는다 — 트래픽이
- * 이어지는 동안 틱 사이에서 흐름이 끊겨 깜빡이지 않게 한다.
- */
-const FLOW_MS = 3000
-
-/** 만료된 항목은 지우고 아직 흐르는 간선만 돌려준다. */
-function flowingIds(until: Map<string, number>, now: number): Set<string> {
-  const ids = new Set<string>()
-  until.forEach((expiresAt, id) => {
-    if (expiresAt > now) {
-      ids.add(id)
-    } else {
-      until.delete(id)
-    }
-  })
-  return ids
-}
-
-function sameIds(a: ReadonlySet<string>, b: ReadonlySet<string>) {
-  return a.size === b.size && [...a].every((id) => b.has(id))
-}
-
-/**
- * 직전 갱신보다 forward(benign+cleared)가 늘어난 간선을 FLOW_MS 동안 기억한다.
- *
- * 집계 카운트는 "구간 안에 있었다"만 알려주므로 그것만으로는 늘 흐르는 선이 된다.
- * 증가분을 봐야 "방금 흘렀다"를 알 수 있다.
- *
- * 만료는 타이머 하나로 따로 훑는다. 증가할 때마다 setTimeout을 걸고 갱신 때 치우면,
- * 갱신이 타이머보다 잦을 때 해제가 통째로 취소돼 선이 계속 흐른 채로 남는다.
- */
-function useForwardFlow(edges: TopologyEdge[]): Set<string> {
-  const previousRef = useRef<Map<string, number>>(new Map())
-  const untilRef = useRef<Map<string, number>>(new Map())
-  const [flowing, setFlowing] = useState<Set<string>>(new Set())
-
-  useEffect(() => {
-    const previous = previousRef.current
-    const now = Date.now()
-
-    edges.forEach((edge) => {
-      const count = displayCountOf(edge.counts, 'forward')
-      const before = previous.get(edge.id)
-      if (before !== undefined && count > before) {
-        untilRef.current.set(edge.id, now + FLOW_MS)
-      }
-    })
-    previousRef.current = new Map(
-      edges.map((edge) => [edge.id, displayCountOf(edge.counts, 'forward')]),
-    )
-
-    const next = flowingIds(untilRef.current, now)
-    setFlowing((current) => (sameIds(current, next) ? current : next))
-  }, [edges])
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      const next = flowingIds(untilRef.current, Date.now())
-      setFlowing((current) => (sameIds(current, next) ? current : next))
-    }, 500)
-    return () => window.clearInterval(timer)
-  }, [])
-
-  return flowing
-}
-
 export function TopologyGraph({
   nodes,
   edges,
@@ -267,8 +210,9 @@ export function TopologyGraph({
   activeEdgeKeys,
   knownEdgeKeys,
   focusedEvent,
+  activeEvents,
+  pulseEdgeIds,
 }: TopologyGraphProps) {
-  const flowingEdgeIds = useForwardFlow(edges)
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<Node>([])
   const shapeRef = useRef('')
   const relayoutRef = useRef(relayoutToken)
@@ -512,6 +456,58 @@ export function TopologyGraph({
     return bySource
   }, [nodes, podsOf, focusedEvent])
 
+  /**
+   * drop·relay 선의 양 끝을 **Pod 단위**로 정한다.
+   *
+   * 집계 간선은 서비스 단위라 상자와 상자를 잇는데, 그러면 어느 replica가 공격했고 어느
+   * replica가 응답을 받았는지 보이지 않는다. 대표 이벤트에 그 답이 있다.
+   *
+   *   출발 = 간선 source 서비스에서 event.podName인 Pod (관측한 사이드카)
+   *   도착 = 간선 target 서비스에서 IP가 event.dstIp인 Pod. API Server면 Master Node 안 블록
+   *
+   * 백엔드는 간선을 "관측한 서비스 → dstIp의 서비스"로 만든다(TopologyService.buildEdges).
+   * 그래서 요청(k1)이든 응답(r1)이든 source가 관측자이고 target이 dstIp 쪽이다.
+   *
+   * 어느 쪽도 Pod를 못 찾으면(상세가 아직 없거나 IP가 안 맞으면) null — 서비스 상자로 되돌린다.
+   */
+  const eventEndpoints = useMemo(() => {
+    const nodeById = new Map(nodes.map((node) => [node.id, node]))
+    const hasMaster = nodeById.has(CONTROL_PLANE_ID)
+
+    return (
+      edge: TopologyEdge,
+      event: DetectionEvent,
+    ): { from: string; to: string } | null => {
+      const sourceNode = nodeById.get(edge.source)
+      const targetNode = nodeById.get(edge.target)
+      if (!sourceNode || !targetNode || nodeIdOf(event.serviceName) !== edge.source) {
+        return null
+      }
+
+      const sourceIndex = podsOf(sourceNode).findIndex(
+        (pod) => pod.podName === event.podName,
+      )
+      const from = sourceIndex >= 0 ? `${edge.source}/pod-${sourceIndex}` : edge.source
+
+      let to = edge.target
+      // API Server 블록의 노드 id가 곧 `kubernetes`라 id는 같다. Master Node가 있을 때만
+      // 블록이 존재하므로 그때만 Pod 탐색을 건너뛴다.
+      if (!(edge.target === K8S_API_ID && hasMaster)) {
+        const targetIndex = podsOf(targetNode).findIndex(
+          (pod) => pod.podIp !== '' && pod.podIp === event.dstIp,
+        )
+        if (targetIndex >= 0) {
+          to = `${edge.target}/pod-${targetIndex}`
+        }
+      }
+
+      if (from === edge.source && to === edge.target) {
+        return null
+      }
+      return { from, to }
+    }
+  }, [nodes, podsOf])
+
   // 하나의 통신 경로를 판정별로 갈라 그린다. drop·relay는 생겼을 때만 나타난다.
   const flowEdges = useMemo<Edge[]>(() => {
     const built: Edge[] = []
@@ -523,9 +519,9 @@ export function TopologyGraph({
         ? BIDIRECTIONAL_OFFSET
         : 0
       const kinds: EdgeKind[] = []
-      // forward(benign+cleared)는 구간에 트래픽이 있으면 흐린 선으로 남기고, 직전
-      // 갱신보다 늘었을 때만 점선이 흐른다. 늘 진하게 켜 두면 무엇이 지금 일어났는지
-      // 알 수 없고, drop·relay가 배경에 묻힌다.
+      // forward(benign+cleared)는 구간에 트래픽이 있으면 점선이 방향대로 흐르는 배경이다.
+      // FORWARD 이벤트가 들어온 순간에만 1초간 굵은 실선으로 바뀐다(pulseEdgeIds).
+      // 늘 굵게 켜 두면 무엇이 지금 일어났는지 알 수 없고, drop·relay가 배경에 묻힌다.
       if (displayCountOf(edge.counts, 'forward') > 0) {
         kinds.push('forward')
       }
@@ -545,20 +541,30 @@ export function TopologyGraph({
         if (!isDrawn(`${edge.id}#${kind}`, activeEdgeKeys, knownEdgeKeys)) {
           return
         }
+        // drop·relay는 대표 이벤트의 Pod끼리 잇는다. forward(배경)는 서비스 상자끼리 둔다 —
+        // Pod 쌍마다 그리면 선이 조합 수만큼 늘어 그래프가 선으로 덮인다.
+        const key = `${edge.id}#${kind}`
+        const event =
+          kind === 'drop' || kind === 'relay' ? activeEvents.get(key) : undefined
+        const ends = event ? eventEndpoints(edge, event) : null
         // 자기 자신 간선은 서비스 상자가 아니라 **Pod 원 사이**로 잇는다.
         const hop =
-          edge.source === edge.target ? selfHopPods.get(edge.source) : undefined
+          !ends && edge.source === edge.target
+            ? selfHopPods.get(edge.source)
+            : undefined
 
         const flowEdge: VerdictFlowEdge = {
-          id: `${edge.id}#${kind}`,
+          id: key,
           type: 'verdict',
-          source: hop ? hop.from : edge.source,
-          target: hop ? hop.to : edge.target,
+          source: ends ? ends.from : hop ? hop.from : edge.source,
+          target: ends ? ends.to : hop ? hop.to : edge.target,
           data: {
             edge,
             kind,
-            offset: base + KIND_OFFSET[kind],
-            flowing: kind === 'forward' && flowingEdgeIds.has(edge.id),
+            // Pod 원·블록끼리 잇는 선은 끝점이 이미 서비스 상자 선과 다르다. 옆으로 밀면
+            // 작은 블록(API Server)에서는 모서리에 비스듬히 걸려 오히려 안 이어져 보인다.
+            offset: ends ? 0 : base + KIND_OFFSET[kind],
+            pulse: kind === 'forward' && pulseEdgeIds.has(edge.id),
             isFresh: addedEdgeIds.includes(edge.id),
             inspectable: INSPECTABLE.includes(kind),
             selected: selectedEdgeId === `${edge.id}#${kind}`,
@@ -573,10 +579,12 @@ export function TopologyGraph({
     edges,
     addedEdgeIds,
     selectedEdgeId,
-    flowingEdgeIds,
+    pulseEdgeIds,
     activeEdgeKeys,
     knownEdgeKeys,
     selfHopPods,
+    activeEvents,
+    eventEndpoints,
   ])
 
   // 선택된 판정 간선의 검증 절차를 그린다. 평소에는 아무것도 그리지 않는다.
@@ -593,9 +601,9 @@ export function TopologyGraph({
       return null
     }
     // 판정을 내리는 쪽은 **egress를 관측한 프록시**다.
-    // REQUEST_VERIFIER(drop·cleared)는 요청을 보낸 쪽,
-    // RESPONSE_CONSISTENCY(relay)는 응답을 낸 쪽이 관측 주체다.
-    const observerId = kind === 'relay' ? edge.target : edge.source
+    // REQUEST_VERIFIER(drop·cleared)는 요청을 보낸 쪽, RESPONSE_CONSISTENCY(relay)는
+    // 응답을 낸 쪽이 관측 주체이고, 백엔드는 두 경우 모두 관측 서비스를 간선 source로 둔다.
+    const observerId = edge.source
     const service = nodes.find((node) => node.id === observerId)
     if (!service || !service.proxyEnabled) {
       return null
@@ -609,15 +617,19 @@ export function TopologyGraph({
     const podCount = pods.length
 
     /**
-     * 관측 주체 Pod. 이벤트를 짚었으면 그 Pod를, 아니면 첫 번째를 쓴다.
+     * 관측 주체 Pod. 이벤트를 짚었으면 그 Pod를, 아니면 그 간선의 대표 이벤트 Pod를,
+     * 둘 다 없으면 첫 번째를 쓴다.
      *
-     * 자기 자신 간선(형제 replica 측면이동)에서는 **어느 replica가 공격자인지**가 핵심
-     * 정보다. 첫 번째로 고정하면 엉뚱한 Pod를 감염된 것으로 그리게 된다.
+     * **어느 replica가 공격자인지**가 핵심 정보다. 첫 번째로 고정하면 엉뚱한 Pod를
+     * 감염된 것으로 그리게 되고, 판정 선이 붙은 Pod와 절차가 시작하는 Pod가 어긋난다.
      */
-    const observedIndex =
-      focusedEvent && focusedEvent.serviceName === service.serviceName
-        ? pods.findIndex((pod) => pod.podName === focusedEvent.podName)
-        : -1
+    const representative =
+      focusedEvent && nodeIdOf(focusedEvent.serviceName) === service.id
+        ? focusedEvent
+        : (activeEvents.get(selectedEdgeId) ?? null)
+    const observedIndex = representative
+      ? pods.findIndex((pod) => pod.podName === representative.podName)
+      : -1
     const compromisedIndex = observedIndex >= 0 ? observedIndex : 0
     const compromised = `${service.id}/pod-${compromisedIndex}`
     // RELAY의 참조 응답은 형제 하나면 충분하다. 전부 이으면 선만 늘어난다.
@@ -692,7 +704,7 @@ export function TopologyGraph({
       steps: flow.steps.map((step) => step.label),
       edges: built,
     }
-  }, [selectedEdgeId, edges, nodes, podsOf, focusedEvent])
+  }, [selectedEdgeId, edges, nodes, podsOf, focusedEvent, activeEvents])
 
   // 네 단계가 같은 통로를 지나 한꺼번에 보면 구분되지 않는다.
   // 한 단계씩 차례로 강조하고, 절차 패널의 행을 짚으면 그 단계에 멈춘다.

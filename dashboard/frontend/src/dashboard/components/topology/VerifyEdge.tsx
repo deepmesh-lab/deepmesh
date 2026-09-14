@@ -7,12 +7,11 @@ import {
   type Node,
 } from '@xyflow/react'
 import {
-  CIRCLE_SLOTS,
   RECT_SLOT_SPACING,
   arrowHead,
   bowedPath,
+  capsuleAnchor,
   centerOf,
-  circleAnchor,
   leftMidPoint,
   rectAnchor,
   selfLoop,
@@ -37,35 +36,30 @@ export type VerifyEdgeData = Record<string, unknown> & {
 
 export type VerifyFlowEdge = Edge<VerifyEdgeData, 'verify'>
 
-/** `.pod-node`의 원 위치 — padding-left 6px + 지름 26px */
-const DISC_CENTER_X = 6 + 13
-const DISC_RADIUS = 13
 /** 화살촉이 도형에 살짝 못 미치게 */
 const TIP_GAP = 3
 
 /**
- * Pod는 상자 가운데가 아니라 **왼쪽 원**이 실제 대상이다.
- * 상자 중심에 이으면 라벨 쪽으로 치우쳐 선이 원에서 떨어져 보인다.
- * Control Plane 구성요소는 사각형 블록이라 그대로 가운데를 쓴다.
+ * 선 끝을 붙일 도형의 중심. Pod(알약)도 블록도 가운데를 기준으로 한다 —
+ * Pod는 알약 전체가 대상이고 간선은 그 바깥 경계에 붙는다.
  */
 function anchorOf(node: InternalNode<Node>): Point {
-  if (node.type === 'pod') {
-    return {
-      x: node.internals.positionAbsolute.x + DISC_CENTER_X,
-      y: node.internals.positionAbsolute.y + (node.measured.height ?? 0) / 2,
-    }
-  }
   return centerOf(node)
 }
 
-/** 둘레에 미리 잡아 둔 가상 접합점에만 붙인다. 원은 등분점, 사각형은 등간격 칸. */
+/**
+ * 끝점을 도형 둘레에 붙인다.
+ *
+ * Pod는 알약 경계에서 상대 쪽으로 뻗은 직선이 뚫는 점에 그대로 붙는다(판정 간선과 같은 규칙).
+ * 구성요소 블록은 절차 선이 여러 개 모이므로 등간격 칸에 스냅해 끝이 겹치지 않게 한다.
+ */
 function attach(
   node: InternalNode<Node>,
   origin: Point,
   toward: Point,
 ): Point {
   if (node.type === 'pod') {
-    return circleAnchor(origin, DISC_RADIUS, toward, CIRCLE_SLOTS, TIP_GAP)
+    return capsuleAnchor(node, toward, TIP_GAP)
   }
 
   const dx = toward.x - origin.x

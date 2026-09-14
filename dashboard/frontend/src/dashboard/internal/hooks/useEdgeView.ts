@@ -15,6 +15,13 @@ export type EdgeView = {
   /** 위 이벤트들이 켜 놓은 간선(`간선ID#category`). 그래프가 이것만 그린다. */
   activeEdgeKeys: ReadonlySet<string>
   /**
+   * 간선 키 → 그 간선에 올라가 있는 이벤트.
+   *
+   * 집계 간선은 서비스 단위라 어느 Pod가 어느 Pod를 쳤는지 모른다. drop·relay 선을
+   * Pod끼리 잇기 위해 대표 이벤트의 podName·dstIp를 쓴다.
+   */
+  activeEvents: ReadonlyMap<string, DetectionEvent>
+  /**
    * 피드에 로그가 하나라도 있는 간선.
    *
    * 여기 없는 간선은 집계에만 남은 옛 판정이라 피드에서 켜고 끌 수단이 없다. 그런
@@ -67,8 +74,9 @@ export function useEdgeView(
   const [selectedEdgeKey, setSelectedEdgeKey] = useState<string | null>(null)
   const [focusedEvent, setFocusedEvent] = useState<DetectionEvent | null>(null)
 
-  const { keyOf, activeEventIds, activeEdgeKeys, knownEdgeKeys } = useMemo(() => {
+  const { keyOf, activeEventIds, activeEdgeKeys, activeEvents, knownEdgeKeys } = useMemo(() => {
     const keyOf = new Map<string, string>()
+    const eventById = new Map(events.map((event) => [event.eventId, event]))
     /** 간선별 최신 이벤트. 피드는 최신순이지만 시각으로 한 번 더 확인한다. */
     const latest = new Map<string, DetectionEvent>()
 
@@ -86,6 +94,7 @@ export function useEdgeView(
 
     const activeEventIds = new Set<string>()
     const activeEdgeKeys = new Set<string>()
+    const activeEvents = new Map<string, DetectionEvent>()
     latest.forEach((latestEvent, key) => {
       // 고른 것이 없으면 최신. 고른 것이 null이면 사용자가 내려 둔 간선이다.
       const picked = chosen.has(key) ? chosen.get(key) : latestEvent.eventId
@@ -97,12 +106,14 @@ export function useEdgeView(
       const eventId = keyOf.has(picked) ? picked : latestEvent.eventId
       activeEventIds.add(eventId)
       activeEdgeKeys.add(key)
+      activeEvents.set(key, eventById.get(eventId) ?? latestEvent)
     })
 
     return {
       keyOf,
       activeEventIds,
       activeEdgeKeys,
+      activeEvents,
       knownEdgeKeys: new Set(latest.keys()),
     }
   }, [events, edges, chosen])
@@ -150,6 +161,7 @@ export function useEdgeView(
   return {
     activeEventIds,
     activeEdgeKeys,
+    activeEvents,
     knownEdgeKeys,
     toggleEvent,
     selectedEdgeKey,

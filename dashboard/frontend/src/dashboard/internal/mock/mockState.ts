@@ -56,6 +56,42 @@ const listeners = new Set<() => void>()
 let tickTimer: number | null = null
 let tickPaused = false
 
+/**
+ * 배경 정상 트래픽을 흘릴지. 시연 조작의 '정상 트래픽' 버튼이 켜고 끈다.
+ *
+ * 연결 끊김(tickPaused)과는 다르다 — 끊김은 모든 수치 갱신을 멈추고, 이것은 benign만 멈춘다.
+ * 꺼도 이미 쌓인 집계는 남아 구간이 지나며 흐려진다.
+ */
+let normalTraffic = true
+const normalTrafficListeners = new Set<(value: boolean) => void>()
+
+/**
+ * 정상 트래픽이 흐르는 tick마다 부를 함수. scenarios.ts가 정상 판정 이벤트를 흘리려고 건다.
+ *
+ * mockState가 scenarios를 import하면 순환이 생겨 역방향으로 주입받는다.
+ */
+let tickHook: (() => void) | null = null
+
+export function setTickHook(hook: (() => void) | null) {
+  tickHook = hook
+}
+
+export function isNormalTraffic() {
+  return normalTraffic
+}
+
+export function setNormalTraffic(value: boolean) {
+  normalTraffic = value
+  normalTrafficListeners.forEach((listener) => listener(value))
+}
+
+export function onNormalTrafficChange(listener: (value: boolean) => void) {
+  normalTrafficListeners.add(listener)
+  return () => {
+    normalTrafficListeners.delete(listener)
+  }
+}
+
 // ── 저장소 생성 ─────────────────────────────────────────────────────────
 
 function seedEdge(seed: MockEdgeSeed, at: IsoDateTime): MockEdge {
@@ -380,7 +416,7 @@ export function recordDetection(event: DetectionEventDetail, edgeId: string) {
 // ── tick ───────────────────────────────────────────────────────────────
 
 function tick() {
-  if (tickPaused) {
+  if (tickPaused || !normalTraffic) {
     return
   }
 
@@ -395,6 +431,7 @@ function tick() {
   })
 
   pushLatencySamples(bucket, 2)
+  tickHook?.()
   notify()
 }
 
