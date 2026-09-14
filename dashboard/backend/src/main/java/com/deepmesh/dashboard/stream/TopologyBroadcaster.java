@@ -70,7 +70,7 @@ public class TopologyBroadcaster {
 	 * 흘리므로, 공격이 일어난 순간의 로그는 넓은 구간을 보고 있어도 즉시 도착한다.
 	 */
 	private static final Map<String, Integer> REFRESH_TICKS = Map.of(
-			"1m", 1, "5m", 1, "15m", 1,
+			"1m", 1, "5m", 1, "10m", 1, "15m", 1,
 			"30m", 2, "1h", 2, "6h", 10, "24h", 30);
 
 	private static final int DEFAULT_REFRESH_TICKS = 2;

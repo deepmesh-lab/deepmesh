@@ -56,13 +56,14 @@ public class DetectionEvent {
 	private String protocol;
 
 	// --- 모델 판정 ---
-	private String modelVerdict;       // ATTACK (이 테이블은 ATTACK만 저장)
+	private String modelVerdict;       // BENIGN | ATTACK
 	private Double ocsvmScore;
+	private Double threshold;          // 판정 기준 점수. 추가 이전 행은 null
 	private Double detectionLatencyMs;
 
 	// --- 집행 결과 ---
 	private String verdict;            // FORWARD | DROP | RELAY
-	private String category;           // cleared | drop | relay
+	private String category;           // benign | cleared | drop | relay
 	private String verificationStage;  // REQUEST_VERIFIER | RESPONSE_CONSISTENCY
 	private Boolean verificationPassed;
 

@@ -110,6 +110,7 @@ public class IngestService {
 				.protocol(event.getProtocol())
 				.modelVerdict(event.getModelVerdict())
 				.ocsvmScore(event.getOcsvmScore())
+				.threshold(event.getThreshold())
 				.detectionLatencyMs(event.getDetectionLatencyMs())
 				.verdict(event.getVerdict())
 				.category(event.getCategory())

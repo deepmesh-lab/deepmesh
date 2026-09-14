@@ -120,6 +120,13 @@ class DashboardQueryTest {
 	}
 
 	@Test
+	void stats_summary는_10m_구간을_받는다() throws Exception {
+		mockMvc.perform(get("/dashboard/stats/summary").param("timeRange", "10m"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.timeRange").value("10m"));
+	}
+
+	@Test
 	void stats_by_service는_blockRate_내림차순이다() throws Exception {
 		mockMvc.perform(get("/dashboard/stats/by-service").param("timeRange", "1h"))
 				.andExpect(status().isOk())

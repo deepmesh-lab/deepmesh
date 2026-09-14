@@ -113,6 +113,7 @@ public class EventQueryService {
 						e.podName(),
 						e.direction(),
 						decimal(e.ocsvmScore(), "%.4f"),
+						decimal(e.threshold(), "%.4f"),
 						decimal(e.detectionLatencyMs(), "%.2f")));
 			}
 			out.flush();

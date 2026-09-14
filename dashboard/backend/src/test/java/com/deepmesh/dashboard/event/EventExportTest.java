@@ -157,6 +157,7 @@ class EventExportTest {
 		String[] cells = dataLines(export(List.of("FORWARD"))).get(0).split(",", -1);
 		assertThat(cells[6]).isEmpty();
 		assertThat(cells[7]).isEmpty();
+		assertThat(cells[8]).isEmpty();
 	}
 
 	@Test
@@ -164,7 +165,8 @@ class EventExportTest {
 		String[] cells = dataLines(export(List.of("RELAY"))).get(0).split(",", -1);
 		assertThat(cells[0]).matches("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}");
 		assertThat(cells[6]).isEqualTo("-0.4000");
-		assertThat(cells[7]).isEqualTo("0.60");
+		assertThat(cells[7]).isEmpty();   // threshold를 보내지 않은 행
+		assertThat(cells[8]).isEqualTo("0.60");
 	}
 
 	@Test

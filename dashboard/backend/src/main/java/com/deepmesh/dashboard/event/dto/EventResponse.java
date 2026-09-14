@@ -25,6 +25,8 @@ public record EventResponse(
 		String peerServiceName,
 		String modelVerdict,
 		Double ocsvmScore,
+		/** 판정 기준 점수. ocsvmScore가 이보다 작으면 ATTACK이다. 추가 이전 행은 null. */
+		Double threshold,
 		String verdict,
 		String category,
 		String verificationStage,
@@ -58,7 +60,7 @@ public record EventResponse(
 				e.getPodName(), e.getNamespace(), e.getNodeName(), e.getDirection(),
 				e.getSessionId(), e.getSrcIp(), e.getSrcPort(), e.getDstIp(), e.getDstPort(),
 				e.getProtocol(), peerServiceName, e.getModelVerdict(), e.getOcsvmScore(),
-				e.getVerdict(), e.getCategory(), e.getVerificationStage(),
+				e.getThreshold(), e.getVerdict(), e.getCategory(), e.getVerificationStage(),
 				e.getVerificationPassed(), e.getDetectionLatencyMs(), e.getSummary(),
 				e.getSignature());
 	}

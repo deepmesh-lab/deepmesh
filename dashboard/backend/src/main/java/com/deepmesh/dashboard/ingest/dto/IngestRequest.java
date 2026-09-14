@@ -82,6 +82,7 @@ public class IngestRequest {
 		private String protocol;
 		private String modelVerdict;
 		private Double ocsvmScore;
+		private Double threshold;   // 판정 기준 점수. ocsvmScore < threshold 이면 ATTACK
 		private String verdict;
 		private String category;
 		private String verificationStage;
