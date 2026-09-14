@@ -61,8 +61,11 @@ const KIND_LABEL: Record<EdgeKind, string> = {
  * 선의 한쪽 끝을 노드 경계에 붙인다.
  *
  * Pod(알약)와 구성요소 블록(API Server 등)은 **중심끼리 이은 직선이 경계를 뚫는 점**에
- * 정확히 붙인다. 그래야 Pod → Pod, Pod → API Server가 최단 직선이 된다. 서비스 상자는
- * 한 쌍 사이에 여러 가닥이 지나므로 기존처럼 옆으로 민 뒤 접합점 칸에 스냅한다.
+ * 정확히 붙인다. 그래야 Pod → Pod, Pod → API Server가 최단 직선이 된다.
+ *
+ * 서비스 상자는 경계 접합점 칸(RECT_SLOT_SPACING)에 스냅한 **뒤** offset만큼 옆으로 민다.
+ * 스냅하기 전에 밀면 반대 방향 두 간선이 같은 칸에 앉아 정확히 겹친다(양방향이 한 선처럼
+ * 보이던 문제). 스냅 후에 밀면 offset이 그대로 남아 서로 벌어진다.
  */
 function attachTo(
   node: InternalNode<Node>,
@@ -84,13 +87,8 @@ function attachTo(
   const length = Math.hypot(dx, dy) || 1
   const forward = { x: dx / length, y: dy / length }
   const normal = { x: -forward.y, y: forward.x }
-  return rectAnchor(
-    node,
-    shift(origin, normal, offset),
-    forward,
-    RECT_SLOT_SPACING,
-    EDGE_GAP,
-  )
+  const anchor = rectAnchor(node, origin, forward, RECT_SLOT_SPACING, EDGE_GAP)
+  return shift(anchor, normal, offset)
 }
 
 export function VerdictEdge({

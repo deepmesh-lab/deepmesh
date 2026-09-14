@@ -58,12 +58,23 @@ public class TopologyService {
 	private final String defaultNamespace;
 
 	/**
-	 * 토폴로지에서 뺄 워크로드.
+	 * 토폴로지에서 완전히 뺄 워크로드 (노드도 엣지도 안 그린다).
 	 *
 	 * <p>대시보드 자신은 관측 대상 메시의 일부가 아니다. 사이드카가 없어 항상
 	 * UNMONITORED로 뜨고, 프론트의 고정 격자에도 자리가 없어 화면 아래에 쌓인다.
 	 */
 	private final Set<String> excludedNodes;
+
+	/**
+	 * 자기 노드로는 안 그리되, 이 노드로 오간 트래픽은 <b>external</b>로 접는 워크로드.
+	 *
+	 * <p>traffic-gen은 클러스터 밖 사용자를 흉내 내는 부하 생성기다. 사이드카가 붙은
+	 * 서비스는 이 Pod의 요청에 응답하면서 상대(traffic-gen)를 관측하는데, 그 상대를
+	 * 그대로 두면 화면에 traffic-gen 상자가 생긴다. external로 접으면 "외부에서 들어온
+	 * 트래픽"으로 읽혀 실제 north-south에 가깝고, frontend처럼 밖만 마주보는 서비스도
+	 * 이 경로로 external 엣지를 얻는다.
+	 */
+	private final Set<String> externalAliases;
 
 	private final ClusterTopologySource cluster;
 	private final DetectionEventRepository eventRepository;
@@ -73,7 +84,8 @@ public class TopologyService {
 
 	public TopologyService(
 			@Value("${deepmesh.namespace:deepmesh}") String defaultNamespace,
-			@Value("${deepmesh.topology.exclude:dashboard-backend,dashboard-frontend,traffic-gen}") String[] excluded,
+			@Value("${deepmesh.topology.exclude:dashboard-backend,dashboard-frontend}") String[] excluded,
+			@Value("${deepmesh.topology.external-alias:traffic-gen}") String[] externalAlias,
 			ClusterTopologySource cluster,
 			DetectionEventRepository eventRepository,
 			StatsBucketRepository statsRepository,
@@ -81,6 +93,7 @@ public class TopologyService {
 			Clock clock) {
 		this.defaultNamespace = defaultNamespace;
 		this.excludedNodes = Set.of(excluded);
+		this.externalAliases = Set.of(externalAlias);
 		this.cluster = cluster;
 		this.eventRepository = eventRepository;
 		this.statsRepository = statsRepository;
@@ -103,7 +116,9 @@ public class TopologyService {
 		List<NodeResponse> nodes = new ArrayList<>();
 		Set<String> known = new HashSet<>();
 		for (ServiceWorkload workload : workloads) {
-			if (excludedNodes.contains(workload.serviceName())) {
+			// 완전 제외 노드와 external로 접는 노드(traffic-gen)는 자기 상자로 그리지 않는다.
+			if (excludedNodes.contains(workload.serviceName())
+					|| externalAliases.contains(workload.serviceName())) {
 				continue;
 			}
 			known.add(workload.serviceName());
@@ -217,17 +232,26 @@ public class TopologyService {
 		// 단위라 여기에 더하면 단위가 섞인다 — addEvent는 benign을 세지 않는다.
 		for (PeerBenignBucket bucket : peerRepository
 				.findByWindowToGreaterThanEqualAndWindowToLessThan(range.from(), range.to())) {
-			String target = PeerBenignBucket.OTHER_DST_IP.equals(bucket.getDstIp())
+			String source = mapEndpoint(NodeIds.of(bucket.getServiceName()));
+			String rawTarget = PeerBenignBucket.OTHER_DST_IP.equals(bucket.getDstIp())
 					? PeerIndex.EXTERNAL_NODE
 					: peers.resolve(bucket.getDstIp(), null);
-			accumulator(byId, NodeIds.of(bucket.getServiceName()), target).addBenign(bucket.getBenign());
+			String target = mapEndpoint(rawTarget);
+			if (source == null || target == null || source.equals(target)) {
+				continue;
+			}
+			accumulator(byId, source, target).addBenign(bucket.getBenign());
 		}
 
 		// cleared/drop/relay — 이벤트가 dstIp를 갖고 온다
 		for (DetectionEvent event : eventRepository
 				.findByOccurredAtGreaterThanEqualAndOccurredAtLessThan(range.from(), range.to())) {
-			String target = peers.resolve(event.getDstIp(), event.getDstPort());
-			accumulator(byId, NodeIds.of(event.getServiceName()), target).addEvent(event);
+			String source = mapEndpoint(NodeIds.of(event.getServiceName()));
+			String target = mapEndpoint(peers.resolve(event.getDstIp(), event.getDstPort()));
+			if (source == null || target == null || source.equals(target)) {
+				continue;
+			}
+			accumulator(byId, source, target).addEvent(event);
 		}
 
 		List<EdgeAccumulator> sorted = new ArrayList<>(byId.values());
@@ -253,6 +277,29 @@ public class TopologyService {
 			out.add(bucket.toResponse(bucket.absorbed));
 		}
 		return out;
+	}
+
+	/**
+	 * 엣지 엔드포인트를 화면 표기로 바꾼다.
+	 *
+	 * <ul>
+	 *   <li>완전 제외 노드(dashboard-*)면 {@code null} — 그 엣지는 세지 않는다.
+	 *   <li>external 별칭(traffic-gen)이면 {@code external}로 접는다 — 상자 대신 외부 트래픽으로 보인다.
+	 *   <li>그 외에는 그대로 둔다.
+	 * </ul>
+	 *
+	 * <p>제외/별칭은 원래 워크로드 노드 조립에만 적용됐다. 그런데 traffic-gen처럼 사이드카가
+	 * 없는 트래픽 출처는 서비스가 그리로 보낸 <b>응답</b>의 목적지로 잡혀 엣지 target이 되고,
+	 * 그 엣지가 남으면 target을 합성 노드로 다시 그려(:128) 화면에 상자가 나타났다.
+	 */
+	private String mapEndpoint(String node) {
+		if (excludedNodes.contains(node)) {
+			return null;
+		}
+		if (externalAliases.contains(node)) {
+			return PeerIndex.EXTERNAL_NODE;
+		}
+		return node;
 	}
 
 	private EdgeAccumulator accumulator(Map<String, EdgeAccumulator> byId, String source, String target) {

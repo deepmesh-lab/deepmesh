@@ -123,10 +123,11 @@ const VERIFY_FLOW: Record<
 }
 
 /**
- * 반대 방향 간선이 함께 있으면 한 줄 위에 겹친다.
- * 양쪽에 같은 값을 주면 법선 방향이 서로 반대라 자동으로 갈라진다.
+ * 반대 방향 간선이 함께 있으면 한 줄 위에 겹친다. 양 끝을 법선 방향으로 이만큼 미는데,
+ * 두 방향의 법선이 서로 반대라 총 간격은 약 2배(~20px)가 된다. 스냅 뒤에 적용하므로
+ * (VerdictEdge.attachTo) 이 값이 그대로 화면 간격이 된다 — 겹치지 않을 만큼만 벌린다.
  */
-const BIDIRECTIONAL_OFFSET = 22
+const BIDIRECTIONAL_OFFSET = 10
 
 /**
  * 상세를 아직 못 받았으면 replicaCount만큼 자리만 잡아둔다.
