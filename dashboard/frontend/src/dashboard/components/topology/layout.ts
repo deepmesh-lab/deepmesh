@@ -1,4 +1,4 @@
-import type { TopologyEdge, TopologyNode } from '../../internal/types'
+import type { NodeKind, TopologyEdge, TopologyNode } from '../../internal/types'
 
 /** Pod 하나가 차지하는 자리 */
 export const POD_WIDTH = 96
@@ -14,16 +14,57 @@ export const GROUP_PADDING = 10
 export const PLAIN_WIDTH = 104
 export const PLAIN_HEIGHT = 92
 
-/** Control Plane 상자 — 서비스와 같은 구조(머리 + 구성요소 두 줄) */
-export const CONTROL_PLANE_WIDTH = 168
-/** 구성요소는 Pod가 아니라 사각형 블록 — 라벨이 길어 Pod보다 넓다 */
-export const COMPONENT_WIDTH = 148
-export const COMPONENT_HEIGHT = 34
+/** 클러스터 외부 — 알약 모양. 서비스 상자와 한눈에 갈리도록 가로로 눕힌다. */
+export const EXTERNAL_WIDTH = 132
+export const EXTERNAL_HEIGHT = 58
+
+/** Master Node 상자 — 서비스와 같은 구조(머리 + 구성요소 세 줄) */
+export const CONTROL_PLANE_WIDTH = 210
+/**
+ * 구성요소는 Pod가 아니라 사각형 블록 — 라벨이 길어 Pod보다 넓다.
+ * 시연 화면에서 모듈 이름과 API 아이콘이 읽히도록 Pod 줄보다 크게 잡는다.
+ */
+export const COMPONENT_WIDTH = 188
+export const COMPONENT_HEIGHT = 46
+/** 구성요소 한 줄의 높이. Pod 줄(POD_ROW_HEIGHT)과 따로 둔다 — 블록이 Pod보다 크다. */
+export const COMPONENT_ROW_HEIGHT = 58
 export const CONTROL_PLANE_ID = 'control-plane'
-export const CONTROL_PLANE_PARTS = [
-  { id: 'verifier', label: 'Request Verifier' },
-  { id: 'provider', label: 'Pod Info Provider' },
+export const K8S_API_ID = 'kubernetes'
+
+/**
+ * Master Node 안의 구성요소. 위에서부터 이 순서로 쌓는다.
+ *
+ * kube-apiserver와 우리 Control Plane(Request Verifier·Pod Info Provider)은 모두
+ * master 호스트에서 돈다. 따로 떨어진 상자로 그리면 그 사실이 화면에서 사라진다.
+ *
+ * `flowId`가 React Flow 노드 id다. API Server는 백엔드 노드 id(`kubernetes`)를 **그대로**
+ * 쓴다 — 간선의 target이 그 id라, 바꾸면 `post → kubernetes` 같은 간선이 붙을 곳을 잃는다.
+ */
+export const CONTROL_PLANE_PARTS: {
+  id: string
+  label: string
+  flowId: string
+  icon?: NodeKind
+}[] = [
+  { id: K8S_API_ID, label: 'API Server', flowId: K8S_API_ID, icon: 'K8S_API' },
+  { id: 'verifier', label: 'Request Verifier', flowId: `${CONTROL_PLANE_ID}/verifier` },
+  { id: 'provider', label: 'Pod Info Provider', flowId: `${CONTROL_PLANE_ID}/provider` },
 ]
+
+/**
+ * 사이드카가 없는 **클러스터 내 워크로드**(mysql 등)인가.
+ *
+ * 이런 노드는 감시하지 않을 뿐 Pod로 이루어진 서비스라, 서비스와 같은 상자에 Pod 원을
+ * 그리고 색만 무채색으로 둔다. API Server·외부·Master Node는 워크로드가 아니다.
+ */
+export function isUnmonitoredWorkload(node: TopologyNode): boolean {
+  return (
+    !node.proxyEnabled &&
+    node.kind !== 'K8S_API' &&
+    node.kind !== 'EXTERNAL' &&
+    node.kind !== 'CONTROL_PLANE'
+  )
+}
 
 /**
  * 「최적 배치」가 쓰는 고정 격자. 값은 `[행, 열]`이다.
@@ -31,30 +72,30 @@ export const CONTROL_PLANE_PARTS = [
  * 자동 배치(dagre)는 간선이 늘 때마다 자리가 바뀌어 선이 꼬였다.
  * 구성이 고정된 토폴로지라 자리를 직접 정하는 편이 훨씬 읽기 좋다.
  *
- *   행\열      0               1          2         3          4
- *     0    control-plane    frontend    post      mysql
- *     1    external            ·         ·        auth     kubernetes
- *     2        ·            comment      ·          ·
+ *   행\열      0           1          2         3          4
+ *     0        ·        frontend    post      mysql
+ *     1    external        ·         ·        auth    Master Node
+ *     2        ·        comment      ·          ·      (API Server 포함)
  *
  * **빈 칸은 남는 자리가 아니라 통로다.** 간선은 두 상자를 잇는 직선이라, 중간에 노드가
- * 있으면 그대로 관통한다. 시연 시나리오에서 긴 간선은 둘뿐이고 각각 통로를 지난다.
+ * 있으면 그대로 관통한다.
  *
- *   external → auth      행 1을 직진 — (1,1)·(1,2)를 비워 둔 이유
- *   post → comment       좌하 대각선 — 같은 두 칸을 지난다
+ *   external → auth        행 1을 직진 — (1,1)·(1,2)를 비워 둔 이유
+ *   post → comment         좌하 대각선 — 같은 두 칸을 지난다
+ *   post → API Server      우하 대각선 — mysql과 auth 사이 행 간격을 지난다 (시나리오 1)
+ *   comment → mysql        우상 대각선 — (1,2)를 지난다
  *
- * 나머지(external→frontend, frontend→post, post→mysql, post→auth, comment→auth,
- * auth→kubernetes)는 인접하거나 짧은 대각선이라 걸리는 것이 없다.
+ * kubernetes는 격자에 없다. Master Node 상자 안의 블록으로 들어간다.
  *
  * 노드를 새로 배치할 때는 **가장 긴 간선의 경로부터 비우고** 나머지를 채우는 편이 낫다.
  */
 const GRID: Record<string, [number, number]> = {
-  'control-plane': [0, 0],
   frontend: [0, 1],
   post: [0, 2],
   mysql: [0, 3],
   external: [1, 0],
   auth: [1, 3],
-  kubernetes: [1, 4],
+  'control-plane': [1, 4],
   comment: [2, 1],
 }
 
@@ -72,14 +113,20 @@ export function nodeSize(
   node: TopologyNode,
   podCount: number,
 ): { width: number; height: number } {
-  if (node.proxyEnabled) {
+  if (node.proxyEnabled || isUnmonitoredWorkload(node)) {
     return { width: GROUP_WIDTH, height: groupHeight(podCount) }
   }
   if (node.kind === 'CONTROL_PLANE') {
     return {
       width: CONTROL_PLANE_WIDTH,
-      height: groupHeight(CONTROL_PLANE_PARTS.length),
+      height:
+        GROUP_HEAD_HEIGHT +
+        CONTROL_PLANE_PARTS.length * COMPONENT_ROW_HEIGHT +
+        GROUP_PADDING,
     }
+  }
+  if (node.kind === 'EXTERNAL') {
+    return { width: EXTERNAL_WIDTH, height: EXTERNAL_HEIGHT }
   }
   return { width: PLAIN_WIDTH, height: PLAIN_HEIGHT }
 }

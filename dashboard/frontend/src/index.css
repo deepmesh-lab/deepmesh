@@ -757,6 +757,22 @@ code,
   color: var(--verdict-drop);
 }
 
+/* 미감시 워크로드(mysql 등) — 서비스와 같은 상자·Pod 원이되 무채색. 판정이 없으니 색을 쓰지 않는다 */
+/* Master Node도 counts가 없어 UNMONITORED다. 브랜드 색을 유지하도록 뺀다 */
+.svc-group.UNMONITORED:not(.CONTROL_PLANE) {
+  border-color: var(--color-text);
+  background: color-mix(in srgb, var(--color-surface-sunken) 90%, transparent);
+}
+
+.svc-tag {
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  background: var(--palette-neutral-200);
+}
+
 /* Pod — 원 */
 .pod-node {
   width: 96px;
@@ -794,6 +810,11 @@ code,
   background: var(--color-warning-weak);
 }
 
+.pod-node.UNMONITORED .disc {
+  border-color: var(--color-text);
+  background: var(--palette-neutral-100);
+}
+
 .pod-node .pod-name {
   font-size: 9.5px;
   color: var(--color-text-muted);
@@ -813,7 +834,9 @@ code,
   background: color-mix(in srgb, var(--color-primary-weak) 85%, transparent);
 }
 
+/* 안의 모듈 이름(.component-name)과 같은 크기 */
 .svc-group.CONTROL_PLANE .svc-group-head .name {
+  font-size: 12px;
   color: var(--color-primary-strong);
 }
 
@@ -823,8 +846,8 @@ code,
 
 /* Control Plane 구성요소 — Pod가 아니므로 원이 아니라 사각형 블록 */
 .component-node {
-  width: 148px;
-  height: 34px;
+  width: 188px;
+  height: 46px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -833,10 +856,38 @@ code,
   border-radius: 5px;
   background: var(--color-surface);
   box-shadow: var(--sh);
+  gap: 6px;
+}
+
+/* API Server 아이콘(k8s_api_icon.png). Master Node 로고와 같은 크기로 맞춘다 */
+img.component-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex: none;
+}
+
+/* Master Node 머리글의 Kubernetes 로고 */
+.svc-group-logo {
+  width: 24px;
+  height: 24px;
+  display: block;
+  flex: none;
+}
+
+.component-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .component-name {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--color-primary-strong);
   overflow: hidden;
@@ -1158,6 +1209,26 @@ code,
 .plain-node .meta {
   font-size: 9px;
   color: var(--color-text-subtle);
+}
+
+.plain-node .plain-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+/* 클러스터 외부 — 알약 모양. 서비스 상자(각진 사각형)와 모양부터 달라야 "밖"으로 읽힌다 */
+.plain-node.EXTERNAL {
+  width: 132px;
+  height: 58px;
+  flex-direction: row;
+  gap: 8px;
+  border-radius: 999px;
+}
+
+.plain-node.EXTERNAL .plain-text {
+  align-items: flex-start;
 }
 
 /* 줌 컨트롤 · 격자 토글 */

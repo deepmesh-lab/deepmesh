@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import type { NodeKind, PodDetail, TopologyNode } from '../../internal/types'
+import k8sIcon from '../../../assets/icons/k8s_icon.svg'
+import k8sApiIcon from '../../../assets/icons/k8s_api_icon.png'
 
 /** 노드 종류를 글리프로 구분한다. */
-function KindGlyph({ kind }: { kind: NodeKind }) {
+export function KindGlyph({ kind }: { kind: NodeKind }) {
   switch (kind) {
     case 'DATASTORE':
       return (
@@ -64,15 +66,26 @@ export type ServiceGroupNode = Node<ServiceGroupData, 'serviceGroup'>
 
 export function ServiceGroup({ data }: NodeProps<ServiceGroupNode>) {
   const node = data.node
+  const isMaster = node.kind === 'CONTROL_PLANE'
 
   return (
     <div className={`svc-group ${node.status} ${node.kind}`}>
       <Handle type="target" position={Position.Left} />
       <div className="svc-group-head">
-        <span className="glyph">
-          <KindGlyph kind={node.kind} />
-        </span>
-        <span className="name">{node.serviceName}</span>
+        {isMaster ? (
+          <img className="svc-group-logo" src={k8sIcon} alt="" aria-hidden="true" />
+        ) : (
+          <span className="glyph">
+            <KindGlyph kind={node.kind} />
+          </span>
+        )}
+        {/* Control Plane 프로세스와 API Server를 함께 담으므로 호스트 이름으로 부른다 */}
+        <span className="name">{isMaster ? 'Master Node' : node.serviceName}</span>
+        {!node.proxyEnabled && !isMaster ? (
+          <span className="svc-tag" title="사이드카가 없어 판정하지 않습니다.">
+            미감시
+          </span>
+        ) : null}
       </div>
       <Handle type="source" position={Position.Right} />
     </div>
@@ -120,12 +133,14 @@ export function PodNode({ data }: NodeProps<PodFlowNode>) {
 export type ComponentNodeData = Record<string, unknown> & {
   label: string
   description: string
+  /** 있으면 라벨 앞에 아이콘을 붙인다 (API Server) */
+  icon?: NodeKind
 }
 
 export type ComponentFlowNode = Node<ComponentNodeData, 'component'>
 
 /**
- * Control Plane의 구성요소. Pod가 아니라 하나의 모듈이므로 원이 아니라
+ * Master Node의 구성요소. Pod가 아니라 하나의 모듈이므로 원이 아니라
  * 사각형 블록으로 그린다 — 백엔드 관측값이 아니라 우리가 설계한 시스템 구조다.
  */
 export function ComponentNode({ data }: NodeProps<ComponentFlowNode>) {
@@ -133,12 +148,19 @@ export function ComponentNode({ data }: NodeProps<ComponentFlowNode>) {
 
   return (
     <div
-      className="component-node"
+      className={`component-node ${data.icon ?? ''}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
+      {data.icon === 'K8S_API' ? (
+        <img className="component-icon" src={k8sApiIcon} alt="" aria-hidden="true" />
+      ) : data.icon ? (
+        <span className="component-icon">
+          <KindGlyph kind={data.icon} />
+        </span>
+      ) : null}
       <span className="component-name">{data.label}</span>
 
       {hovered ? (
@@ -161,15 +183,25 @@ export type PlainFlowNode = Node<PlainNodeData, 'plain'>
 
 export function PlainNode({ data }: NodeProps<PlainFlowNode>) {
   const node = data.node
+  const external = node.kind === 'EXTERNAL'
 
   return (
-    <div className="plain-node" title={`${node.kind} (counts: null)`}>
+    <div
+      className={`plain-node ${node.kind}`}
+      title={
+        external
+          ? '클러스터 안의 어느 서비스로도 매핑되지 않은 상대(외부 사용자·인터넷 등)를 모은 노드입니다.'
+          : `${node.kind} (counts: null)`
+      }
+    >
       <Handle type="target" position={Position.Left} />
       <span className="glyph">
         <KindGlyph kind={node.kind} />
       </span>
-      <span className="name">{node.serviceName}</span>
-      <span className="meta">미감시</span>
+      <span className="plain-text">
+        <span className="name">{external ? 'External' : node.serviceName}</span>
+        <span className="meta">{external ? '클러스터 외부' : '미감시'}</span>
+      </span>
       <Handle type="source" position={Position.Right} />
     </div>
   )

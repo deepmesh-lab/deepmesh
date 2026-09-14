@@ -32,6 +32,9 @@ import {
   CONTROL_PLANE_WIDTH,
   COMPONENT_WIDTH,
   COMPONENT_HEIGHT,
+  COMPONENT_ROW_HEIGHT,
+  K8S_API_ID,
+  isUnmonitoredWorkload,
   layoutTopology,
   topologyShapeKey,
 } from './layout'
@@ -61,6 +64,8 @@ const KIND_OFFSET: Record<EdgeKind, number> = {
 const INSPECTABLE: EdgeKind[] = ['drop', 'relay']
 
 const PART_DESCRIPTION: Record<string, string> = {
+  [K8S_API_ID]:
+    'Kubernetes API Server. 클러스터 리소스를 조회·변경하는 제어 창구입니다. 일반 서비스 Pod가 여기로 요청을 보내는 일은 평소 없어서, 감염된 Pod의 API 호출은 교차 검증에서 차단(DROP)됩니다.',
   verifier:
     '프록시가 보낸 요청 시그니처를 같은 ReplicaSet의 다른 Pod 이력과 대조합니다. 한 Pod에서만 관측된 요청이면 차단(DROP), 다른 replica에도 있으면 통과(CLEARED)시킵니다.',
   provider:
@@ -123,7 +128,12 @@ const VERIFY_FLOW: Record<
  */
 const BIDIRECTIONAL_OFFSET = 22
 
-/** 상세를 아직 못 받았으면 replicaCount만큼 자리만 잡아둔다. */
+/**
+ * 상세를 아직 못 받았으면 replicaCount만큼 자리만 잡아둔다.
+ *
+ * 미감시 워크로드(mysql 등)는 백엔드가 Pod 상세를 주지 않아 **늘 이 자리표시자로** 그린다.
+ * 상태는 노드의 UNMONITORED를 그대로 물려받아 무채색으로 보인다.
+ */
 function placeholderPods(node: TopologyNode): PodDetail[] {
   return Array.from({ length: Math.max(node.replicaCount, 1) }, (_x, index) => ({
     podName: `${node.serviceName}-${index + 1}`,
@@ -267,7 +277,7 @@ export function TopologyGraph({
   const rawPodsOf = useMemo(() => {
     return (node: TopologyNode): PodDetail[] => {
       if (!node.proxyEnabled) {
-        return []
+        return isUnmonitoredWorkload(node) ? placeholderPods(node) : []
       }
       const known = pods[node.serviceName]
       return known && known.length > 0 ? known : placeholderPods(node)
@@ -347,10 +357,16 @@ export function TopologyGraph({
 
     const forced = relayoutRef.current !== relayoutToken
     if (forced || shapeRef.current !== shapeKey) {
-      // 형태가 바뀌었다 — 새로 배치한다. 사용자가 옮긴 위치는 여기서만 초기화된다.
-      const placements = layoutTopology(displayNodes, edges, (n) => podsOf(n).length)
+      // API Server는 Master Node 상자 안의 블록으로 그린다. 상자가 없을 때만 따로 선다.
+      const embedsApi = displayNodes.some((node) => node.id === CONTROL_PLANE_ID)
+      const placeable = embedsApi
+        ? displayNodes.filter((node) => node.id !== K8S_API_ID)
+        : displayNodes
 
-      displayNodes.forEach((node) => {
+      // 형태가 바뀌었다 — 새로 배치한다. 사용자가 옮긴 위치는 여기서만 초기화된다.
+      const placements = layoutTopology(placeable, edges, (n) => podsOf(n).length)
+
+      placeable.forEach((node) => {
         const at = placements[node.id]
         if (node.kind === 'CONTROL_PLANE') {
           next.push({
@@ -363,7 +379,7 @@ export function TopologyGraph({
 
           CONTROL_PLANE_PARTS.forEach((part, index) => {
             next.push({
-              id: `${node.id}/${part.id}`,
+              id: part.flowId,
               type: 'component',
               parentId: node.id,
               extent: 'parent',
@@ -373,16 +389,21 @@ export function TopologyGraph({
                 x: (CONTROL_PLANE_WIDTH - COMPONENT_WIDTH) / 2,
                 y:
                   GROUP_HEAD_HEIGHT +
-                  index * POD_ROW_HEIGHT +
-                  (POD_ROW_HEIGHT - COMPONENT_HEIGHT) / 2,
+                  index * COMPONENT_ROW_HEIGHT +
+                  (COMPONENT_ROW_HEIGHT - COMPONENT_HEIGHT) / 2,
               },
-              data: { label: part.label, description: PART_DESCRIPTION[part.id] },
+              data: {
+                label: part.label,
+                description: PART_DESCRIPTION[part.id],
+                icon: part.icon,
+              },
             })
           })
           return
         }
 
-        if (!node.proxyEnabled) {
+        // 미감시 워크로드는 서비스와 같은 상자로 간다. 여기는 외부·API Server(단독)뿐이다.
+        if (!node.proxyEnabled && !isUnmonitoredWorkload(node)) {
           next.push({
             id: node.id,
             type: 'plain',
