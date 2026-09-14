@@ -3,6 +3,7 @@ import { getErrorMessage } from '../../api/restClient'
 import { dashboardApi } from '../internal/client'
 import { fixed, parseSignature } from '../internal/format'
 import { formatKstTime } from '../internal/time'
+import { displayCategoryOf } from '../internal/verdict'
 import type { DetectionEventDetail, PacketMeta } from '../internal/types'
 import { KeyValue, Modal, ModalHeader } from './Modal'
 
@@ -50,8 +51,11 @@ export function EventDetailDialog({ eventId, onClose }: Props) {
         title="탐지 이벤트 상세"
         badge={
           detail ? (
-            <span className={`badge ${detail.category}`} style={{ width: 66 }}>
-              {detail.category.toUpperCase()}
+            <span
+              className={`badge ${displayCategoryOf(detail.category)}`}
+              style={{ width: 66 }}
+            >
+              {displayCategoryOf(detail.category).toUpperCase()}
             </span>
           ) : undefined
         }
@@ -81,6 +85,7 @@ export function EventDetailDialog({ eventId, onClose }: Props) {
                 ['peerServiceName', detail.peerServiceName],
                 ['modelVerdict', detail.modelVerdict],
                 ['ocsvmScore', fixed(detail.ocsvmScore, 4)],
+                ['threshold', fixed(detail.threshold, 4)],
                 ['verdict', detail.verdict],
                 ['category', detail.category],
                 ['detectionLatencyMs', fixed(detail.detectionLatencyMs, 2)],
@@ -90,7 +95,8 @@ export function EventDetailDialog({ eventId, onClose }: Props) {
             />
             <div className="note">
               <b>ocsvmScore</b>는 OCSVM <code>decision_function()</code> 원값입니다.
-              음수가 ATTACK이며, 절댓값이 클수록 판정 경계에서 멉니다.
+              0이 아니라 <b>threshold</b>(서비스별 기준 점수)보다 작으면 ATTACK이며,
+              차이가 클수록 판정 경계에서 멉니다.
             </div>
           </div>
 

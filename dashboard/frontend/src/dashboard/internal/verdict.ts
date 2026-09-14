@@ -10,24 +10,44 @@ import type {
 } from './types'
 
 /**
- * 화면 라벨.
- *
- * **"forward"는 여기 쓰지 않는다.** 축이 다르다.
+ * 화면 표기 3분류 — **집행(verdict) 축을 그대로 쓴다.**
  *
  *   modelVerdict  BENIGN | ATTACK          모델이 뭐라 했나
  *   verdict       FORWARD | DROP | RELAY   프록시가 어떻게 집행했나
- *   category      benign | cleared | drop | relay   화면의 4분류
+ *   category      benign | cleared | drop | relay   API·DB가 나르는 4분류
  *
- * `FORWARD`는 benign과 cleared를 **둘 다** 포함한다 — cleared도 전달된 트래픽이다.
- * 그래서 benign만 "정상 (forward)"이라 부르면, 나란히 놓인 cleared가 forward가
- * 아닌 것처럼 읽힌다. forward는 상세 대화상자의 verdict 값에서만 쓴다.
+ * 화면은 benign과 cleared를 합쳐 `forward` 하나로 보여준다. 둘 다 전달된 트래픽이고,
+ * 모델 오탐이 cleared로 대량 흡수되면 그 숫자가 화면을 차지해 실제 사건(drop·relay)을
+ * 가린다. 시연에서 봐야 할 것은 "무엇이 막혔나"다.
  *
- * `cleared`를 "오탐"이라 쓰지 않는 이유는 명세 §판정 분류 체계에 있다 —
- * 교차 검증 통과가 트래픽의 정상성을 보증하지는 않는다.
+ * API·DB는 여전히 4분류다. 합치는 것은 오직 이 파일의 함수들이다 — 화면마다 따로 더하면
+ * 한 곳만 빠뜨려도 숫자가 어긋난다. 4분류가 필요한 곳(상세 대화상자의 category 칸)은
+ * 원래 값을 그대로 쓴다.
  */
-export const VERDICT_LABEL: Record<VerdictCategory, string> = {
-  benign: '정상 판정 (benign)',
-  cleared: '교차 검증 통과 (cleared)',
+export type DisplayCategory = 'forward' | 'drop' | 'relay'
+
+export const DISPLAY_CATEGORIES: readonly DisplayCategory[] = [
+  'forward',
+  'drop',
+  'relay',
+]
+
+/** 화면 분류 하나가 담는 API 분류들. 로그 필터가 API 파라미터로 풀 때 쓴다. */
+export const CATEGORIES_OF_DISPLAY: Record<
+  DisplayCategory,
+  readonly VerdictCategory[]
+> = {
+  forward: ['benign', 'cleared'],
+  drop: ['drop'],
+  relay: ['relay'],
+}
+
+export function displayCategoryOf(category: VerdictCategory): DisplayCategory {
+  return category === 'benign' || category === 'cleared' ? 'forward' : category
+}
+
+export const DISPLAY_LABEL: Record<DisplayCategory, string> = {
+  forward: '전달 (forward)',
   drop: '요청 차단 (drop)',
   relay: '응답 대체 (relay)',
 }
@@ -35,18 +55,25 @@ export const VERDICT_LABEL: Record<VerdictCategory, string> = {
 /**
  * 목록 한 줄에 쓰는 판정 설명.
  *
- * 백엔드 `summary`를 쓰지 않는다. 거기에는 시그니처가 " — " 뒤에 이어 붙어 있어
- * 좁은 피드에서는 잘려 나가 읽히지도 않으면서 판정 문구를 밀어낸다. 시그니처는
- * 상세 대화상자의 '판정 대상' 절이 온전히 보여준다.
- *
- * 문구는 백엔드 `IngestService.buildSummary`가 category로 만드는 것과 같다 —
- * category만 있으면 결정되므로 화면에서 다시 만들어도 어긋나지 않는다.
+ * 백엔드 `summary`를 쓰지 않는다. 거기에는 시그니처가 " — " 뒤에 이어 붙어 있고
+ * 4분류 문구라 cleared가 그대로 드러난다. 시그니처는 상세 대화상자의 '판정 대상' 절이
+ * 온전히 보여준다.
  */
-export const VERDICT_SUMMARY: Record<VerdictCategory, string> = {
-  benign: '정상 판정',
-  cleared: '이상 판정 후 교차 검증 통과',
+export const DISPLAY_SUMMARY: Record<DisplayCategory, string> = {
+  forward: '정상 전달',
   drop: '미관측 요청 차단',
   relay: '응답 변조 탐지·교체',
+}
+
+/** 4분류 counts에서 화면 분류 하나의 수. */
+export function displayCountOf(
+  counts: VerdictCounts,
+  display: DisplayCategory,
+): number {
+  return CATEGORIES_OF_DISPLAY[display].reduce(
+    (sum, category) => sum + counts[category],
+    0,
+  )
 }
 
 /**
@@ -60,11 +87,13 @@ export function nodeIdOf(serviceName: string): string {
 }
 
 /**
- * 이벤트가 그려진 간선의 키(`간선ID#category`). 없으면 null.
+ * 이벤트가 그려진 간선의 키(`간선ID#화면분류`). 없으면 null.
  *
  * 키를 문자열로 조립하지 않고 **실제 간선 목록에서 찾는다**. 응답 이벤트는 관측자가
  * 응답한 쪽이라 간선 방향이 호출 방향과 반대다(post가 관측한 응답의 상대는 frontend지만
  * 간선은 frontend->post다). 양방향을 모두 보고 해당 판정이 실제로 집계된 쪽을 고른다.
+ *
+ * 그래프는 benign·cleared를 forward 한 가닥으로 그리므로 키도 화면 분류로 만든다.
  */
 export function edgeKeyOfEvent(
   event: {
@@ -80,16 +109,17 @@ export function edgeKeyOfEvent(
 
   const self = nodeIdOf(event.serviceName)
   const peer = event.peerServiceName
+  const display = displayCategoryOf(event.category)
   const match = (source: string, target: string) =>
     edges.find(
       (edge) =>
         edge.source === source &&
         edge.target === target &&
-        edge.counts[event.category] > 0,
+        displayCountOf(edge.counts, display) > 0,
     )
 
   const edge = match(self, peer) ?? match(peer, self)
-  return edge ? `${edge.id}#${event.category}` : null
+  return edge ? `${edge.id}#${display}` : null
 }
 
 export function emptyCounts(): VerdictCounts {

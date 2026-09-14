@@ -1,6 +1,10 @@
 import { Link } from 'react-router-dom'
 import { formatKstTime } from '../internal/time'
-import { edgeKeyOfEvent, VERDICT_SUMMARY } from '../internal/verdict'
+import {
+  DISPLAY_SUMMARY,
+  displayCategoryOf,
+  edgeKeyOfEvent,
+} from '../internal/verdict'
 import type { DetectionEvent, TopologyEdge } from '../internal/types'
 
 type Props = {
@@ -59,6 +63,7 @@ export function DetectionFeed({
             // 상대를 몰라 간선을 찾지 못하는 이벤트는 그래프에 올릴 수 없다.
             const edgeKey = edgeKeyOfEvent(event, edges)
             const active = activeEventIds.has(event.eventId)
+            const display = displayCategoryOf(event.category)
 
             return (
               <div
@@ -79,18 +84,15 @@ export function DetectionFeed({
                   onClick={() => onToggle(event)}
                 >
                   <span className="t">{formatKstTime(event.occurredAt)}</span>
-                  {/*
-                    verdict가 아니라 category다. FORWARD 하나에 benign과 cleared가
-                    함께 들어가 verdict로는 둘을 가를 수 없다.
-                  */}
-                  <span className={`badge ${event.category}`}>
-                    {event.category.toUpperCase()}
+                  {/* 화면 분류다. benign과 cleared는 FORWARD 하나로 보인다. */}
+                  <span className={`badge ${display}`}>
+                    {display.toUpperCase()}
                   </span>
                   <span className="m">
                     <b>
                       {event.serviceName} → {event.peerServiceName ?? '알 수 없음'}
                     </b>
-                    <em>{VERDICT_SUMMARY[event.category]}</em>
+                    <em>{DISPLAY_SUMMARY[display]}</em>
                   </span>
                 </button>
 

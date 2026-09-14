@@ -57,6 +57,7 @@ type ScenarioStep = Omit<
   | 'namespace'
   | 'protocol'
   | 'modelVerdict'
+  | 'threshold'
   | 'windowSize'
   | 'packets'
   | 'sessionId'
@@ -71,6 +72,8 @@ function emitStep(step: ScenarioStep, edgeId: string, alert?: Omit<AlertPayload,
     namespace: MOCK_NAMESPACE,
     protocol: 'TCP',
     modelVerdict: 'ATTACK',
+    // 목 점수(-0.06 ~ -0.6)가 모두 ATTACK이 되도록 그보다 위에 둔다.
+    threshold: -0.05,
     sessionId: sessionId(),
     windowSize: 5,
     packets: buildPackets(now),

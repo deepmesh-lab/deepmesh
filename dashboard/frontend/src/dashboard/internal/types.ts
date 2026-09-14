@@ -17,7 +17,14 @@ export type IsoDateTime = string
  * 명세 1-2·1-3: 토폴로지 계열이 받는 집계 구간. **`24h`가 없다.**
  * 요약(1-4)만 24h를 받으므로 타입을 분리해 잘못된 값이 넘어가는 것을 컴파일 단계에서 막는다.
  */
-export type TopologyTimeRange = '1m' | '5m' | '15m' | '30m' | '1h' | '6h'
+export type TopologyTimeRange =
+  | '1m'
+  | '5m'
+  | '10m'
+  | '15m'
+  | '30m'
+  | '1h'
+  | '6h'
 
 /** 명세 1-4: 요약·서비스별 분포가 받는 집계 구간 */
 export type TimeRange = TopologyTimeRange | '24h'
@@ -27,12 +34,15 @@ export type Interval = '10s' | '1m' | '5m'
 /**
  * 화면에서 고를 수 있는 집계 구간.
  *
- * 짧은 쪽(1m·5m·15m)은 뺐다. 트래픽이 잠깐만 뜸해도 카드가 전부 0이 되고 지연 값이
+ * 1m·5m·15m은 뺐다. 트래픽이 잠깐만 뜸해도 카드가 전부 0이 되고 지연 값이
  * null로 와서 "대시보드가 고장 났다"로 읽힌다. 실제로 그 상태에서 화면이 죽었다.
+ * 10m은 시연용으로 넣었다 — 방금 일으킨 공격이 긴 구간의 누적에 묻히지 않는다.
+ * 표본 없는 구간의 null 처리는 이후 보강돼 있다.
  *
  * 타입과 백엔드는 옛 값도 그대로 받는다 — URL로 직접 지정하는 길은 막지 않는다.
  */
 export const TOPOLOGY_TIME_RANGES: readonly TopologyTimeRange[] = [
+  '10m',
   '30m',
   '1h',
   '6h',
@@ -298,12 +308,17 @@ export type DetectionEvent = {
    */
   modelVerdict: 'BENIGN' | 'ATTACK'
   /**
-   * OCSVM decision_function() 원값. 음수가 ATTACK.
+   * OCSVM decision_function() 원값. **0이 아니라 `threshold`보다 작으면** ATTACK.
    *
    * 백엔드 컬럼에 not-null 제약이 없어 비어 있을 수 있다. 값이 있다고 가정하고
    * `.toFixed()`를 부르면 렌더가 통째로 죽는다.
    */
   ocsvmScore: number | null
+  /**
+   * 판정 기준 점수(서비스 모델의 threshold_df). 서비스마다 다르다.
+   * 나중에 추가된 필드라 그 이전에 쌓인 행에는 값이 없다.
+   */
+  threshold: number | null
   verdict: Verdict
   /** 네 분류 모두 온다. benign은 모델이 정상으로 본 건이다. */
   category: VerdictCategory

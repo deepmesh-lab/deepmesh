@@ -20,6 +20,7 @@ import type {
 import { ComponentNode, PlainNode, PodNode, ServiceGroup } from './nodes'
 import { VerifyEdge, type VerifyFlowEdge } from './VerifyEdge'
 import { VerdictEdge, type EdgeKind, type VerdictFlowEdge } from './VerdictEdge'
+import { displayCountOf } from '../../internal/verdict'
 import {
   GROUP_HEAD_HEIGHT,
   GROUP_WIDTH,
@@ -46,14 +47,18 @@ const edgeTypes = { verdict: VerdictEdge, verify: VerifyEdge }
 /** 판정별 간선이 겹치지 않도록 나란히 벌린다. 상자에 닿는 지점도 그만큼 벌어진다. */
 const KIND_OFFSET: Record<EdgeKind, number> = {
   idle: 0,
-  benign: 0,
+  forward: 0,
   drop: -17,
-  cleared: 17,
-  relay: 34,
+  relay: 17,
 }
 
-/** 클릭하면 검증 과정을 펼칠 수 있는 판정 */
-const INSPECTABLE: EdgeKind[] = ['cleared', 'drop', 'relay']
+/**
+ * 클릭하면 검증 과정을 펼칠 수 있는 판정.
+ *
+ * forward는 넣지 않는다. benign은 검증을 돌리지 않았고, cleared 절차는 forward 가닥
+ * 안에 섞여 있어 어느 건을 펼칠지 정할 수 없다.
+ */
+const INSPECTABLE: EdgeKind[] = ['drop', 'relay']
 
 const PART_DESCRIPTION: Record<string, string> = {
   verifier:
@@ -172,48 +177,71 @@ function isDrawn(
   return knownEdgeKeys.has(key) ? activeEdgeKeys.has(key) : true
 }
 
-/** benign 간선이 나타났다 사라지는 시간. 눈에 띄되 잔상이 남지 않는 길이. */
-const PULSE_MS = 1200
+/**
+ * forward 가닥이 흐르는 시간. 토폴로지 갱신 주기(1~2초)보다 길게 잡는다 — 트래픽이
+ * 이어지는 동안 틱 사이에서 흐름이 끊겨 깜빡이지 않게 한다.
+ */
+const FLOW_MS = 3000
+
+/** 만료된 항목은 지우고 아직 흐르는 간선만 돌려준다. */
+function flowingIds(until: Map<string, number>, now: number): Set<string> {
+  const ids = new Set<string>()
+  until.forEach((expiresAt, id) => {
+    if (expiresAt > now) {
+      ids.add(id)
+    } else {
+      until.delete(id)
+    }
+  })
+  return ids
+}
+
+function sameIds(a: ReadonlySet<string>, b: ReadonlySet<string>) {
+  return a.size === b.size && [...a].every((id) => b.has(id))
+}
 
 /**
- * 직전 갱신보다 benign이 늘어난 간선을 잠깐 기억한다.
+ * 직전 갱신보다 forward(benign+cleared)가 늘어난 간선을 FLOW_MS 동안 기억한다.
  *
- * 집계 카운트는 "구간 안에 있었다"만 알려주므로 그것만으로는 상시 켜진 선이 된다.
+ * 집계 카운트는 "구간 안에 있었다"만 알려주므로 그것만으로는 늘 흐르는 선이 된다.
  * 증가분을 봐야 "방금 흘렀다"를 알 수 있다.
+ *
+ * 만료는 타이머 하나로 따로 훑는다. 증가할 때마다 setTimeout을 걸고 갱신 때 치우면,
+ * 갱신이 타이머보다 잦을 때 해제가 통째로 취소돼 선이 계속 흐른 채로 남는다.
  */
-function useBenignPulse(edges: TopologyEdge[]): Set<string> {
+function useForwardFlow(edges: TopologyEdge[]): Set<string> {
   const previousRef = useRef<Map<string, number>>(new Map())
-  const [pulsing, setPulsing] = useState<Set<string>>(new Set())
+  const untilRef = useRef<Map<string, number>>(new Map())
+  const [flowing, setFlowing] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const previous = previousRef.current
-    const fired: string[] = []
+    const now = Date.now()
 
     edges.forEach((edge) => {
+      const count = displayCountOf(edge.counts, 'forward')
       const before = previous.get(edge.id)
-      if (before !== undefined && edge.counts.benign > before) {
-        fired.push(edge.id)
+      if (before !== undefined && count > before) {
+        untilRef.current.set(edge.id, now + FLOW_MS)
       }
     })
-    previousRef.current = new Map(edges.map((e) => [e.id, e.counts.benign]))
+    previousRef.current = new Map(
+      edges.map((edge) => [edge.id, displayCountOf(edge.counts, 'forward')]),
+    )
 
-    if (fired.length === 0) {
-      return
-    }
-
-    setPulsing((current) => new Set([...current, ...fired]))
-    const timer = window.setTimeout(() => {
-      setPulsing((current) => {
-        const next = new Set(current)
-        fired.forEach((id) => next.delete(id))
-        return next
-      })
-    }, PULSE_MS)
-
-    return () => window.clearTimeout(timer)
+    const next = flowingIds(untilRef.current, now)
+    setFlowing((current) => (sameIds(current, next) ? current : next))
   }, [edges])
 
-  return pulsing
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const next = flowingIds(untilRef.current, Date.now())
+      setFlowing((current) => (sameIds(current, next) ? current : next))
+    }, 500)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  return flowing
 }
 
 export function TopologyGraph({
@@ -230,7 +258,7 @@ export function TopologyGraph({
   knownEdgeKeys,
   focusedEvent,
 }: TopologyGraphProps) {
-  const pulsingEdgeIds = useBenignPulse(edges)
+  const flowingEdgeIds = useForwardFlow(edges)
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<Node>([])
   const shapeRef = useRef('')
   const relayoutRef = useRef(relayoutToken)
@@ -474,14 +502,11 @@ export function TopologyGraph({
         ? BIDIRECTIONAL_OFFSET
         : 0
       const kinds: EdgeKind[] = []
-      // benign(정상 판정)은 상시 표시하지 않는다. 끊이지 않는 트래픽이라 늘 켜져 있으면
-      // 무엇이 지금 일어났는지 알 수 없다. 직전 갱신보다 benign이 늘었을 때만
-      // 잠깐 나타났다 사라진다.
-      if (pulsingEdgeIds.has(edge.id)) {
-        kinds.push('benign')
-      }
-      if (edge.counts.cleared > 0) {
-        kinds.push('cleared')
+      // forward(benign+cleared)는 구간에 트래픽이 있으면 흐린 선으로 남기고, 직전
+      // 갱신보다 늘었을 때만 점선이 흐른다. 늘 진하게 켜 두면 무엇이 지금 일어났는지
+      // 알 수 없고, drop·relay가 배경에 묻힌다.
+      if (displayCountOf(edge.counts, 'forward') > 0) {
+        kinds.push('forward')
       }
       if (edge.counts.drop > 0) {
         kinds.push('drop')
@@ -512,6 +537,7 @@ export function TopologyGraph({
             edge,
             kind,
             offset: base + KIND_OFFSET[kind],
+            flowing: kind === 'forward' && flowingEdgeIds.has(edge.id),
             isFresh: addedEdgeIds.includes(edge.id),
             inspectable: INSPECTABLE.includes(kind),
             selected: selectedEdgeId === `${edge.id}#${kind}`,
@@ -526,7 +552,7 @@ export function TopologyGraph({
     edges,
     addedEdgeIds,
     selectedEdgeId,
-    pulsingEdgeIds,
+    flowingEdgeIds,
     activeEdgeKeys,
     knownEdgeKeys,
     selfHopPods,

@@ -10,28 +10,14 @@ import {
   fromDateTimeLocalValue,
   toDateTimeLocalValue,
 } from '../internal/time'
-import { VERDICT_CATEGORIES } from '../internal/types'
-import type {
-  Direction,
-  EventListParams,
-  VerdictCategory,
-} from '../internal/types'
-
-/**
- * 거르는 축은 verdict가 아니라 category다.
- *
- * verdict `FORWARD` 하나에 benign(정상 전달)과 cleared(이상 판정 후 교차 검증 통과)가
- * 모두 들어가서, verdict로는 둘을 가를 수 없다. 화면이 보여주는 것도 category다.
- *
- * 라벨은 개요 카드·토폴로지 범례와 같은 말을 쓴다. 같은 것을 화면마다 다르게 부르면
- * 사용자가 서로 다른 개념으로 읽는다.
- */
-const CATEGORY_FILTER_LABEL: Record<VerdictCategory, string> = {
-  benign: '정상 판정 (benign)',
-  cleared: '교차 검증 통과 (cleared)',
-  drop: '차단 (drop)',
-  relay: '응답 대체 (relay)',
-}
+import type { Direction, EventListParams } from '../internal/types'
+import {
+  CATEGORIES_OF_DISPLAY,
+  DISPLAY_CATEGORIES,
+  DISPLAY_LABEL,
+  displayCategoryOf,
+  type DisplayCategory,
+} from '../internal/verdict'
 
 /**
  * 필터를 URL 쿼리스트링에 두면 링크로 공유·북마크할 수 있고, 뒤로 가기가 자연스럽게 동작한다.
@@ -75,18 +61,32 @@ export function LogsPage() {
   }
 
   /**
+   * 칩은 화면 분류(forward/drop/relay)지만 URL·API에는 category로 풀어 보낸다.
+   * FORWARD 칩 하나가 `benign,cleared` 둘이 된다 — 백엔드는 4분류만 안다.
+   *
    * 필터를 걸지 않으면 서버는 전체를 준다. 그 상태를 "셋 다 선택"으로 보여준다 —
    * 아무것도 안 눌린 화면은 "아무것도 안 나온다"로 오해된다.
    */
-  const activeCategories: readonly string[] =
-    categories.length > 0 ? categories : VERDICT_CATEGORIES
+  const activeDisplays: readonly DisplayCategory[] =
+    categories.length > 0
+      ? DISPLAY_CATEGORIES.filter((display) =>
+          CATEGORIES_OF_DISPLAY[display].some((category) =>
+            categories.includes(category),
+          ),
+        )
+      : DISPLAY_CATEGORIES
 
-  function toggleCategory(category: VerdictCategory) {
-    const next = activeCategories.includes(category)
-      ? activeCategories.filter((value) => value !== category)
-      : [...activeCategories, category]
-    // 넷 다 선택이면 파라미터를 비워 '전체'로 되돌린다. URL이 짧아지고 의미도 같다.
-    update('category', next.length === VERDICT_CATEGORIES.length ? '' : next.join(','))
+  function toggleDisplay(display: DisplayCategory) {
+    const next = activeDisplays.includes(display)
+      ? activeDisplays.filter((value) => value !== display)
+      : [...activeDisplays, display]
+    // 셋 다 선택이면 파라미터를 비워 '전체'로 되돌린다. URL이 짧아지고 의미도 같다.
+    update(
+      'category',
+      next.length === DISPLAY_CATEGORIES.length
+        ? ''
+        : next.flatMap((value) => CATEGORIES_OF_DISPLAY[value]).join(','),
+    )
   }
 
   return (
@@ -105,14 +105,14 @@ export function LogsPage() {
               <div className="field">
                 <label>판정</label>
                 <div className="chips">
-                  {VERDICT_CATEGORIES.map((category) => (
+                  {DISPLAY_CATEGORIES.map((display) => (
                     <button
                       type="button"
-                      key={category}
-                      className={`btn ${activeCategories.includes(category) ? 'active' : ''}`}
-                      onClick={() => toggleCategory(category)}
+                      key={display}
+                      className={`btn ${activeDisplays.includes(display) ? 'active' : ''}`}
+                      onClick={() => toggleDisplay(display)}
                     >
-                      {CATEGORY_FILTER_LABEL[category]}
+                      {DISPLAY_LABEL[display]}
                     </button>
                   ))}
                 </div>
@@ -236,6 +236,9 @@ export function LogsPage() {
                     <th style={{ textAlign: 'left' }}>Pod 이름</th>
                     <th style={{ textAlign: 'left' }}>방향</th>
                     <th>이상 점수</th>
+                    <th title="이상 점수가 이 값보다 작으면 모델이 ATTACK으로 판정합니다.">
+                      기준 점수
+                    </th>
                     <th>추론 지연(ms)</th>
                   </tr>
                 </thead>
@@ -248,13 +251,12 @@ export function LogsPage() {
                     >
                       <td>{formatKstDateTime(event.occurredAt)}</td>
                       <td style={{ textAlign: 'left' }}>
-                        {/* verdict가 아니라 category. FORWARD 하나에 benign과
-                            cleared가 함께 들어가 verdict로는 구분이 안 된다. */}
+                        {/* 화면 분류. benign과 cleared는 FORWARD로 합쳐 보인다. */}
                         <span
-                          className={`badge ${event.category}`}
+                          className={`badge ${displayCategoryOf(event.category)}`}
                           style={{ width: 62 }}
                         >
-                          {event.category.toUpperCase()}
+                          {displayCategoryOf(event.category).toUpperCase()}
                         </span>
                       </td>
                       <td style={{ textAlign: 'left' }}>
@@ -263,6 +265,7 @@ export function LogsPage() {
                       <td style={{ textAlign: 'left' }}>{event.podName}</td>
                       <td style={{ textAlign: 'left' }}>{event.direction}</td>
                       <td>{fixed(event.ocsvmScore, 4) ?? '—'}</td>
+                      <td>{fixed(event.threshold, 4) ?? '—'}</td>
                       <td>{fixed(event.detectionLatencyMs, 2) ?? '—'}</td>
                     </tr>
                   ))}

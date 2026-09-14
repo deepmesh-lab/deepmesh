@@ -44,13 +44,9 @@ export function TopologyPanel({
       />
 
       <div className="legend">
-        <span>
-          <i style={{ background: 'var(--verdict-benign)' }} />
-          정상 판정 (benign)
-        </span>
-        <span>
-          <i style={{ background: 'var(--verdict-cleared)' }} />
-          교차 검증 통과 (cleared)
+        <span title="트래픽이 새로 흐를 때 점선이 방향대로 움직입니다.">
+          <i style={{ background: 'var(--verdict-forward)' }} />
+          전달 (forward)
         </span>
         <span>
           <i style={{ background: 'var(--verdict-drop)' }} />

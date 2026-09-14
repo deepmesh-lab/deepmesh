@@ -13,6 +13,8 @@ import { VerdictTimeseriesChart } from './VerdictTimeseriesChart'
 const INTERVAL_BY_RANGE: Record<TopologyTimeRange, Interval> = {
   '1m': '10s',
   '5m': '10s',
+  // 10초 버킷 60개. 1분이면 10점뿐이라 공격 순간이 뭉개진다.
+  '10m': '10s',
   '15m': '1m',
   '30m': '1m',
   '1h': '1m',

@@ -9,6 +9,7 @@ import {
 } from '@xyflow/react'
 import type { TopologyEdge } from '../../internal/types'
 import { formatKstTime } from '../../internal/time'
+import { displayCountOf } from '../../internal/verdict'
 import {
   CIRCLE_SLOTS,
   EDGE_GAP,
@@ -24,18 +25,23 @@ import {
 
 /** 하나의 통신 경로가 판정별로 여러 간선으로 갈라진다. */
 /**
- * 간선 한 가닥의 종류. **category와 같은 이름을 쓴다.**
+ * 간선 한 가닥의 종류. **화면 분류(DisplayCategory)와 같은 이름을 쓴다.**
  *
- * 예전에는 benign 가닥을 'forward'라 불렀는데, forward는 집행 축(verdict)의 값이라
- * cleared까지 포함한다. 한 화면에서 같은 말이 두 가지를 가리키면 반드시 헷갈린다.
+ * forward는 benign과 cleared를 합친 한 가닥이다. 집행 축(verdict)의 FORWARD와 같은
+ * 범위라 한 화면에서 같은 말이 두 가지를 가리키지 않는다.
  */
-export type EdgeKind = 'idle' | 'benign' | 'cleared' | 'drop' | 'relay'
+export type EdgeKind = 'idle' | 'forward' | 'drop' | 'relay'
 
 export type VerdictEdgeData = Record<string, unknown> & {
   edge: TopologyEdge
   kind: EdgeKind
   /** 같은 노드 쌍의 간선이 겹치지 않도록 가운데를 부풀리는 정도 */
   offset: number
+  /**
+   * forward 가닥에만 의미가 있다. 방금 새 트래픽이 흘렀으면 true —
+   * 흐린 선 위로 점선이 방향대로 흐른다.
+   */
+  flowing: boolean
   isFresh: boolean
   /** 클릭해서 검증 과정을 펼칠 수 있는 간선인지 */
   inspectable: boolean
@@ -46,8 +52,7 @@ export type VerdictFlowEdge = Edge<VerdictEdgeData, 'verdict'>
 
 const KIND_LABEL: Record<EdgeKind, string> = {
   idle: '경로만 존재 (집계 구간 내 트래픽 없음)',
-  benign: '정상 판정 (benign)',
-  cleared: '교차 검증 통과 (cleared)',
+  forward: '전달 (forward)',
   drop: '요청 차단 (drop)',
   relay: '응답 대체 (relay)',
 }
@@ -148,26 +153,27 @@ export function VerdictEdge({
   const kind = data?.kind ?? 'idle'
   const edge = data?.edge
 
-  // 트래픽이 많을수록 빨리 점멸한다.
+  const forwardCount = edge ? displayCountOf(edge.counts, 'forward') : 0
+  // 트래픽이 많을수록 점선이 빨리 흐른다.
   const period =
-    kind === 'benign'
-      ? Math.max(0.6, 2.0 - Math.min(1.4, (edge?.counts.benign ?? 0) / 900))
+    kind === 'forward'
+      ? Math.max(0.5, 1.4 - Math.min(0.9, forwardCount / 1500))
       : 1
 
-  const blink = { ['--fd' as string]: `${period.toFixed(2)}s` }
+  const flow = { ['--fd' as string]: `${period.toFixed(2)}s` }
+  const flowing = kind === 'forward' && data?.flowing ? 'flowing' : ''
 
   return (
     <>
       <path
         d={path}
-        className={`verdict-edge ${kind} ${hovered ? 'hovered' : ''} ${data?.selected ? 'selected' : ''}`}
-        style={blink}
+        className={`verdict-edge ${kind} ${flowing} ${hovered ? 'hovered' : ''} ${data?.selected ? 'selected' : ''}`}
+        style={flow}
       />
-      {/* 화살촉도 path로 그린다. marker로는 점멸에 맞춰 색을 바꿀 수 없다. */}
+      {/* 화살촉도 path로 그린다. marker로는 흐름 상태에 맞춰 색을 바꿀 수 없다. */}
       <path
         d={arrowHead(to, heading)}
-        className={`verdict-arrow ${kind}`}
-        style={blink}
+        className={`verdict-arrow ${kind} ${flowing}`}
       />
       {/* 마우스를 받기 위한 투명한 두꺼운 선 */}
       <path
@@ -190,10 +196,8 @@ export function VerdictEdge({
             </div>
             <div className="tip-kind">{KIND_LABEL[kind]}</div>
             <dl className="tip-counts">
-              <dt>정상</dt>
-              <dd>{edge.counts.benign.toLocaleString()}</dd>
-              <dt>교차 검증 통과</dt>
-              <dd>{edge.counts.cleared.toLocaleString()}</dd>
+              <dt>전달</dt>
+              <dd>{forwardCount.toLocaleString()}</dd>
               <dt>차단</dt>
               <dd>{edge.counts.drop.toLocaleString()}</dd>
               <dt>응답 대체</dt>
