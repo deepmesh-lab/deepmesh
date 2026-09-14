@@ -63,32 +63,26 @@ const KIND_LABEL: Record<EdgeKind, string> = {
  * Pod(알약)와 구성요소 블록(API Server 등)은 **중심끼리 이은 직선이 경계를 뚫는 점**에
  * 정확히 붙인다. 그래야 Pod → Pod, Pod → API Server가 최단 직선이 된다.
  *
- * 서비스 상자는 경계 접합점 칸(RECT_SLOT_SPACING)에 스냅한 **뒤** offset만큼 옆으로 민다.
- * 스냅하기 전에 밀면 반대 방향 두 간선이 같은 칸에 앉아 정확히 겹친다(양방향이 한 선처럼
- * 보이던 문제). 스냅 후에 밀면 offset이 그대로 남아 서로 벌어진다.
+ * 서비스 상자는 경계 접합점 칸(RECT_SLOT_SPACING)에 스냅한다. 양방향 간선을 벌리는 것은
+ * 여기가 아니라 straight 빌더에서 **선 전체를 한 법선으로 평행 이동**해 처리한다 —
+ * 끝점마다 법선을 따로 구하면 두 방향이 같은 쪽으로 밀려 오히려 겹친다.
  */
 function attachTo(
   node: InternalNode<Node>,
   origin: Point,
   toward: Point,
-  offset: number,
 ): Point {
   if (node.type === 'pod') {
     return capsuleAnchor(node, toward, EDGE_GAP)
-  }
-  if (node.type === 'component') {
-    const dx = toward.x - origin.x
-    const dy = toward.y - origin.y
-    const length = Math.hypot(dx, dy) || 1
-    return exitPoint(node, origin, { x: dx / length, y: dy / length }, EDGE_GAP)
   }
   const dx = toward.x - origin.x
   const dy = toward.y - origin.y
   const length = Math.hypot(dx, dy) || 1
   const forward = { x: dx / length, y: dy / length }
-  const normal = { x: -forward.y, y: forward.x }
-  const anchor = rectAnchor(node, origin, forward, RECT_SLOT_SPACING, EDGE_GAP)
-  return shift(anchor, normal, offset)
+  if (node.type === 'component') {
+    return exitPoint(node, origin, forward, EDGE_GAP)
+  }
+  return rectAnchor(node, origin, forward, RECT_SLOT_SPACING, EDGE_GAP)
 }
 
 export function VerdictEdge({
@@ -118,13 +112,22 @@ export function VerdictEdge({
   const straight = loop
     ? null
     : (() => {
-        // 서비스 상자는 선 전체를 나란히 민 뒤, 둘레의 가상 접합점 중 가장 가까운 칸에 붙인다.
-        // Pod·구성요소 블록은 중심끼리 이은 직선이 경계를 뚫는 점에 그대로 붙는다(attachTo).
+        // 끝점은 중심끼리 이은 직선이 경계를 뚫는 자리에 붙인다.
         const sourceOrigin = centerOf(sourceNode)
         const targetOrigin = centerOf(targetNode)
 
-        const from = attachTo(sourceNode, sourceOrigin, targetOrigin, offset)
-        const to = attachTo(targetNode, targetOrigin, sourceOrigin, offset)
+        const fromAnchor = attachTo(sourceNode, sourceOrigin, targetOrigin)
+        const toAnchor = attachTo(targetNode, targetOrigin, sourceOrigin)
+
+        // 양방향 간선이 겹치지 않게 선 전체를 한 법선으로 평행 이동한다. source→target
+        // 기준 법선 하나를 두 끝에 똑같이 적용하므로, 반대 방향 간선은 법선이 뒤집혀
+        // 반대편으로 갈라진다. offset이 0이면(단방향·Pod·블록) 그대로 둔다.
+        const dx = targetOrigin.x - sourceOrigin.x
+        const dy = targetOrigin.y - sourceOrigin.y
+        const length = Math.hypot(dx, dy) || 1
+        const normal = { x: -dy / length, y: dx / length }
+        const from = shift(fromAnchor, normal, offset)
+        const to = shift(toAnchor, normal, offset)
         // 접합점으로 옮겨 붙은 뒤라 화살촉은 실제 그어진 선의 방향을 따라야 한다.
         const span = Math.hypot(to.x - from.x, to.y - from.y) || 1
         return {
