@@ -72,20 +72,20 @@ public class TopologyService {
 	private final ExternalAliases externalAliases;
 
 	/**
-	 * 표시용 합성 엣지 (source→target 목록). <b>미관측 구조 의존성</b>을 그래프에 드러낸다.
+	 * 표시용 합성 엣지 (source→target 목록). 관측 데이터에 없는 <b>구조적 의존 경로</b>를
+	 * 그래프에 드러낸다.
 	 *
 	 * <ul>
-	 *   <li>서비스→mysql: 트래픽은 실재하지만 MySQL 바이너리 프로토콜이 HTTP 파서를 깨서
-	 *       iptables가 3306을 프록시 예외로 둔다(servicemesh/data-plane/iptables.sh).
-	 *   <li>frontend→서비스: nginx가 /api/**를 각 서비스로 프록시하는 구조지만(nginx.conf),
-	 *       부하 생성기가 서비스를 직접 호출해 frontend를 지나지 않아 관측되지 않는다.
-	 *       실제로 frontend로 API를 흘리면 frontend 모델이 동적 응답을 오탐(drop/relay)하므로,
-	 *       트래픽 대신 표시용 엣지로만 나타낸다.
+	 *   <li>서비스→mysql: auth·post·comment 모두 MySQL을 쓰지만(application.yml의 jdbc:mysql),
+	 *       MySQL 바이너리 프로토콜이 HTTP 파서를 깨서 iptables가 3306을 프록시 예외로 둔다
+	 *       (servicemesh/data-plane/iptables.sh) — 실재하지만 미관측.
+	 *   <li>frontend→서비스: nginx가 /api/**를 각 서비스로 프록시하도록 라우트가 정의돼 있다
+	 *       (nginx.conf). 부하 생성기는 서비스를 직접 호출해 이 경로로 트래픽을 흘리지 않지만,
+	 *       <b>설정에 존재하는 구조적 경로</b>이므로 간선으로 나타낸다.
 	 * </ul>
 	 *
-	 * <p>둘 다 관측 데이터로는 엣지가 안 생겨, 조회 시점에 <b>표시용으로</b> 얹는다 — 굵기는
-	 * source 서비스의 forward 볼륨을 따르게 해 실제 부하와 함께 움직인다. 노드 counts·탐지·
-	 * 통계에는 전혀 반영하지 않는다.
+	 * <p>굵기는 source 서비스의 forward(benign+cleared) 볼륨을 따라 움직인다. 노드 counts·탐지·
+	 * 통계에는 전혀 반영하지 않으며, 실제 트래픽이 아니라 표시용이라 drop/relay가 붙지 않는다.
 	 */
 	private final List<String[]> displayEdges;
 
@@ -279,10 +279,9 @@ public class TopologyService {
 	/**
 	 * 관측 엣지 위에 표시용 합성 엣지(서비스→mysql, frontend→서비스)를 얹는다.
 	 *
-	 * <p>이 경로들은 프록시 예외(3306)이거나 부하 생성기가 우회해 관측 데이터에 없다
-	 * ({@link #displayEdges} 참고). 굵기는 source 서비스의 forward(benign+cleared) 볼륨을
-	 * 그대로 써서, 부하가 있을 때만 실제 트래픽처럼 초록 forward로 흐르게 한다. 부하가 없는
-	 * 서비스엔 죽은 선을 남기지 않는다.
+	 * <p>관측 데이터에 없는 구조적 의존 경로다({@link #displayEdges} 참고). 굵기는 source
+	 * 서비스의 forward(benign+cleared) 볼륨을 그대로 써서, 부하가 있을 때만 초록 forward로
+	 * 흐르게 한다. 부하가 없는 서비스엔 죽은 선을 남기지 않는다.
 	 */
 	private List<EdgeResponse> withDisplayEdges(
 			List<EdgeResponse> edges, Map<String, VerdictCounts> byService) {
