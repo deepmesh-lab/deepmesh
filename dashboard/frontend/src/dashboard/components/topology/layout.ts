@@ -74,31 +74,36 @@ export function isUnmonitoredWorkload(node: TopologyNode): boolean {
  * 구성이 고정된 토폴로지라 자리를 직접 정하는 편이 훨씬 읽기 좋다.
  *
  *   행\열      0           1          2         3          4
- *     0        ·        frontend    post      mysql
- *     1    external        ·         ·        auth    Master Node
- *     2        ·        comment      ·          ·      (API Server 포함)
+ *     0        ·           ·        post      mysql
+ *     1    external    frontend      ·        auth    Master Node
+ *     2        ·           ·       comment      ·      (API Server 포함)
  *
  * **빈 칸은 남는 자리가 아니라 통로다.** 간선은 두 상자를 잇는 직선이라, 중간에 노드가
  * 있으면 그대로 관통한다.
  *
- *   external → auth        행 1을 직진 — (1,1)·(1,2)를 비워 둔 이유
- *   post → comment         좌하 대각선 — 같은 두 칸을 지난다
+ *   external → frontend    행 1 인접 — 외부 트래픽 진입
+ *   frontend → post        우상 대각선 — 시나리오 2(r1). 변조 응답이 흘러간 방향
+ *   frontend → comment     우하 대각선
+ *   frontend → auth        행 1 직진 — (1,2)를 비워 둔 통로
+ *   post ↔ comment         열 2 수직 — 두 상자를 곧게 잇는다
  *   auth → API Server      바로 옆 칸 — 시나리오 1(k1)
- *   frontend → post        바로 옆 칸 — 시나리오 2(r1). 변조 응답이 흘러간 방향
- *   comment → mysql        우상 대각선 — (1,2)를 지난다
+ *   auth → mysql           열 3 수직 — 표시용(3306 미관측)
+ *
+ * frontend·post·comment를 가운데로 모아 external→서비스→auth→Master가 좌우로 흐르고,
+ * post(위)·comment(아래)가 세로로 벌어져 mysql·auth로 가는 대각선이 겹치지 않는다.
  *
  * kubernetes는 격자에 없다. Master Node 상자 안의 블록으로 들어간다.
  *
  * 노드를 새로 배치할 때는 **가장 긴 간선의 경로부터 비우고** 나머지를 채우는 편이 낫다.
  */
 const GRID: Record<string, [number, number]> = {
-  frontend: [0, 1],
-  post: [0, 2],
-  mysql: [0, 3],
   external: [1, 0],
+  frontend: [1, 1],
+  post: [0, 2],
+  comment: [2, 2],
+  mysql: [0, 3],
   auth: [1, 3],
   'control-plane': [1, 4],
-  comment: [2, 1],
 }
 
 const COLUMN_GAP = 130
