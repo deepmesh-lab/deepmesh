@@ -2,6 +2,7 @@ package com.deepmesh.dashboard.event;
 
 import com.deepmesh.dashboard.event.dto.EventResponse;
 import com.deepmesh.dashboard.topology.ClusterTopologySource;
+import com.deepmesh.dashboard.topology.ExternalAliases;
 import com.deepmesh.dashboard.topology.PeerIndex;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,8 @@ import org.springframework.stereotype.Component;
 public class PeerNaming {
 
 	private final ClusterTopologySource cluster;
+	/** traffic-gen 등 external로 접을 이름. 토폴로지 엣지와 같은 규칙을 쓴다. */
+	private final ExternalAliases externalAliases;
 
 	@Value("${deepmesh.namespace:deepmesh}")
 	private String namespace;
@@ -40,8 +43,18 @@ public class PeerNaming {
 		return name(event, index());
 	}
 
-	private static EventResponse name(DetectionEvent event, PeerIndex peers) {
-		return EventResponse.from(event, peers.resolve(event.getDstIp(), event.getDstPort()));
+	/**
+	 * 관측 주체(serviceName)와 목적지(peerServiceName) 둘 다 external 별칭을 접는다.
+	 *
+	 * <p>traffic-gen은 사이드카가 없어 관측 주체로는 오지 않지만, 서비스가 그리로 보낸 응답의
+	 * 목적지로 잡혀 peerServiceName이 된다("frontend → traffic-gen"). 토폴로지 그래프만
+	 * external로 접고 여기서 안 접으면 이벤트·로그에는 traffic-gen이 그대로 남아 화면이
+	 * 어긋난다. 두 축을 모두 접어 토폴로지와 표기를 일치시킨다.
+	 */
+	private EventResponse name(DetectionEvent event, PeerIndex peers) {
+		String serviceName = externalAliases.fold(event.getServiceName());
+		String peerServiceName = externalAliases.fold(peers.resolve(event.getDstIp(), event.getDstPort()));
+		return EventResponse.from(event, serviceName, peerServiceName);
 	}
 
 	/**

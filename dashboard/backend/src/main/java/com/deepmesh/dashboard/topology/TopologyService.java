@@ -66,15 +66,10 @@ public class TopologyService {
 	private final Set<String> excludedNodes;
 
 	/**
-	 * 자기 노드로는 안 그리되, 이 노드로 오간 트래픽은 <b>external</b>로 접는 워크로드.
-	 *
-	 * <p>traffic-gen은 클러스터 밖 사용자를 흉내 내는 부하 생성기다. 사이드카가 붙은
-	 * 서비스는 이 Pod의 요청에 응답하면서 상대(traffic-gen)를 관측하는데, 그 상대를
-	 * 그대로 두면 화면에 traffic-gen 상자가 생긴다. external로 접으면 "외부에서 들어온
-	 * 트래픽"으로 읽혀 실제 north-south에 가깝고, frontend처럼 밖만 마주보는 서비스도
-	 * 이 경로로 external 엣지를 얻는다.
+	 * 자기 노드로는 안 그리되, 이 노드로 오간 트래픽은 <b>external</b>로 접는 워크로드
+	 * (traffic-gen 등). 규칙은 탐지 이벤트·로그와 공유한다 — {@link ExternalAliases}.
 	 */
-	private final Set<String> externalAliases;
+	private final ExternalAliases externalAliases;
 
 	private final ClusterTopologySource cluster;
 	private final DetectionEventRepository eventRepository;
@@ -85,7 +80,7 @@ public class TopologyService {
 	public TopologyService(
 			@Value("${deepmesh.namespace:deepmesh}") String defaultNamespace,
 			@Value("${deepmesh.topology.exclude:dashboard-backend,dashboard-frontend}") String[] excluded,
-			@Value("${deepmesh.topology.external-alias:traffic-gen}") String[] externalAlias,
+			ExternalAliases externalAliases,
 			ClusterTopologySource cluster,
 			DetectionEventRepository eventRepository,
 			StatsBucketRepository statsRepository,
@@ -93,7 +88,7 @@ public class TopologyService {
 			Clock clock) {
 		this.defaultNamespace = defaultNamespace;
 		this.excludedNodes = Set.of(excluded);
-		this.externalAliases = Set.of(externalAlias);
+		this.externalAliases = externalAliases;
 		this.cluster = cluster;
 		this.eventRepository = eventRepository;
 		this.statsRepository = statsRepository;
@@ -296,10 +291,7 @@ public class TopologyService {
 		if (excludedNodes.contains(node)) {
 			return null;
 		}
-		if (externalAliases.contains(node)) {
-			return PeerIndex.EXTERNAL_NODE;
-		}
-		return node;
+		return externalAliases.fold(node);
 	}
 
 	private EdgeAccumulator accumulator(Map<String, EdgeAccumulator> byId, String source, String target) {
