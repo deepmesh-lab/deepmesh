@@ -32,14 +32,10 @@ data:
     #      공개 API 전체를 덮는다.
     set -u
 
-    # 브라우저 진입점. nginx가 same-origin /api/**를 각 서비스로 프록시한다(msa/frontend/nginx.conf).
+    A=http://auth-service:8080
+    P=http://post-service:8080
+    C=http://comment-service:8080
     F=http://frontend-service:80   # 서비스 이름은 frontend가 아니라 frontend-service다
-    # 공개 API도 서비스로 직접 가지 않고 frontend를 경유한다 — 실제 브라우저와 같은 경로다.
-    # 그래야 nginx가 프록시하는 frontend→auth/post/comment egress가 사이드카에 관측돼
-    # 대시보드에 간선으로 나타난다. 직접 호출하면 그 간선이 아예 생기지 않는다.
-    A=$F   # /api/auth/**     → auth-service
-    P=$F   # /api/posts/**    → post-service
-    C=$F   # /api/comments/** → comment-service
     JSON='Content-Type: application/json'
     UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/128.0 Safari/537.36'
     PW=pw12345678
@@ -84,9 +80,9 @@ data:
     # 네 갈래를 각각 다른 리듬으로 돌린다. 한 갈래가 멈춰도 나머지는 흐른다.
 
     flow_frontend() {         # frontend→external : 브라우저가 페이지를 여는 트래픽
-      # 이 갈래는 정적 페이지·자산만 연다. 관측되는 것은 '브라우저에게 페이지를 돌려주는
-      # 응답'이고, 상대(브라우저)는 클러스터 밖이라 external로 접힌다. frontend→auth/post/
-      # comment 엣지는 아래 API 갈래들이 F(frontend)를 경유하며 nginx 프록시로 만든다.
+      # frontend는 정적 파일만 서빙하고 다른 서비스를 부르지 않는다(nginx.conf). 그래서
+      # 이 노드에는 나가는 east-west 엣지가 구조적으로 없고, 관측되는 것은 '브라우저에게
+      # 페이지를 돌려주는 응답'뿐이다. 상대(브라우저)는 클러스터 밖이라 external로 접힌다.
       while :; do
         # 페이지와 자산을 '한 연결로' 가져온다(브라우저와 같다). 정적 응답은 짧아서
         # 한 요청만으로는 세션 창(프레임 5개)을 못 채워 판정이 아예 안 나온다.
@@ -138,8 +134,9 @@ data:
       if [ "$(wc -l < $USERS)" -lt 8 ] || maybe 15; then U=$(signup); think
       else U=$(pick_user); fi
 
-      # 사람은 API가 아니라 페이지를 먼저 연다. 이후 API 호출도 브라우저처럼 frontend를
-      # 경유하므로(nginx가 /api/**를 프록시), 이 방문 전체가 frontend를 통해 흐른다.
+      # 사람은 API가 아니라 페이지를 먼저 연다. frontend는 정적 파일만 서빙하고
+      # API 프록시가 없어서(nginx.conf), 브라우저가 서비스로 직접 호출하는 구조다.
+      # 그래서 frontend는 이 페이지 로드로만 트래픽에 등장한다.
       hit $F/
       maybe 70 && hit $F/assets/index.js
       think
