@@ -87,10 +87,9 @@ cmd_k1() {
 
 # ── r1 — 응답 위조 XSS (RELAY) ──────────────────────────────────────────
 cmd_r1() {
-  local fe post feip W
+  local fe feip W
   fe=$(podname frontend)
-  post=$(podname post-service)
-  [ -z "$fe" ] || [ -z "$post" ] && { echo "frontend/post-service Pod가 없습니다."; return 1; }
+  [ -z "$fe" ] && { echo "frontend Pod가 없습니다."; return 1; }
   feip=$(podip "$fe")
   W=/usr/share/nginx/html
 
@@ -107,12 +106,19 @@ cmd_r1() {
     cat /tmp/xss $W/index.html.orig > $W/index.html
     echo '   주입 확인:'; head -c 70 $W/index.html; echo" 2>&1 | sed 's/^/   /'
 
-  # (2) post Pod에서 그 frontend Pod IP로 GET /을 한 연결에 8번 → 변조 응답이 egress로 관측됨.
-  kubectl -n "$NS" exec "$post" -c post-service -- sh -c "
+  # (2) 외부 사용자(클러스터 밖 브라우저)가 변조된 페이지를 받는 상황을 재현한다.
+  #     사이드카가 없는 임시 curl Pod로 그 frontend Pod IP를 직접 친다(한 연결에 8번 —
+  #     세션 창을 채워야 판정이 난다). 이 Pod는 서비스 색인에 없어 external로 접히므로,
+  #     frontend가 돌려주는 변조 응답이 frontend→external RELAY로 집행된다 — XSS가
+  #     브라우저로 나가는 그림 그대로다.
+  #     (post Pod로 치면 frontend→post relay에 더해, post의 비정상 요청이 post→frontend
+  #      drop으로 잡혀 시연이 지저분해진다.)
+  kubectl -n "$NS" run "r1-victim-$$" --rm -i --restart=Never \
+    --image=curlimages/curl:8.10.1 --command -- sh -c "
     set -- -s -o /dev/null
     k=0; while [ \$k -lt 8 ]; do set -- \"\$@\" http://$feip:80/; k=\$((k+1)); done
     curl \"\$@\"
-    echo '[r1] GET / x8 (one conn) -> frontend 변조 응답'" 2>&1 | sed 's/^/   /'
+    echo '[r1] 외부 사용자 GET / x8 (one conn) -> frontend 변조 응답'" 2>&1 | sed 's/^/   /'
 
   sleep 3
   echo "── 사이드카 RELAY 로그 (frontend) ──"
