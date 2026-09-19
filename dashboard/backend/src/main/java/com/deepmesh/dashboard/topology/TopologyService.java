@@ -71,6 +71,17 @@ public class TopologyService {
 	 */
 	private final ExternalAliases externalAliases;
 
+	/**
+	 * 표시용 데이터스토어 엣지 (source→target 목록).
+	 *
+	 * <p>서비스→mysql 트래픽은 실재하지만, MySQL 바이너리 프로토콜이 HTTP 파서를 깨서
+	 * iptables가 3306을 프록시 예외로 둔다(servicemesh/data-plane/iptables.sh). 그래서 관측
+	 * 데이터로는 이 엣지가 생기지 않는다. 구조를 드러내려고 조회 시점에 <b>표시용으로</b>
+	 * 얹는다 — 굵기는 source 서비스의 benign 볼륨을 따르게 해 실제 부하와 함께 움직인다.
+	 * 노드 counts·탐지·통계에는 전혀 반영하지 않는다.
+	 */
+	private final List<String[]> datastoreEdges;
+
 	private final ClusterTopologySource cluster;
 	private final DetectionEventRepository eventRepository;
 	private final StatsBucketRepository statsRepository;
@@ -80,6 +91,7 @@ public class TopologyService {
 	public TopologyService(
 			@Value("${deepmesh.namespace:deepmesh}") String defaultNamespace,
 			@Value("${deepmesh.topology.exclude:dashboard-backend,dashboard-frontend}") String[] excluded,
+			@Value("${deepmesh.topology.datastore-edges:auth->mysql,post->mysql,comment->mysql}") String[] datastoreEdges,
 			ExternalAliases externalAliases,
 			ClusterTopologySource cluster,
 			DetectionEventRepository eventRepository,
@@ -88,6 +100,7 @@ public class TopologyService {
 			Clock clock) {
 		this.defaultNamespace = defaultNamespace;
 		this.excludedNodes = Set.of(excluded);
+		this.datastoreEdges = parseEdges(datastoreEdges);
 		this.externalAliases = externalAliases;
 		this.cluster = cluster;
 		this.eventRepository = eventRepository;
@@ -106,7 +119,7 @@ public class TopologyService {
 		PeerIndex peers = cluster.peerIndex(ns);
 
 		Map<String, VerdictCounts> byService = countsByService(range);
-		List<EdgeResponse> edges = buildEdges(range, peers);
+		List<EdgeResponse> edges = withDatastoreEdges(buildEdges(range, peers), byService);
 
 		List<NodeResponse> nodes = new ArrayList<>();
 		Set<String> known = new HashSet<>();
@@ -252,6 +265,58 @@ public class TopologyService {
 		List<EdgeAccumulator> sorted = new ArrayList<>(byId.values());
 		sorted.sort(Comparator.comparingLong((EdgeAccumulator a) -> a.counts.total()).reversed());
 		return fold(sorted);
+	}
+
+	/**
+	 * 관측 엣지 위에 표시용 데이터스토어 엣지(서비스→mysql)를 얹는다.
+	 *
+	 * <p>3306은 프록시 예외라 관측되지 않으므로({@link #datastoreEdges} 참고) 이 엣지는
+	 * 관측 데이터에 없다. 굵기는 source 서비스의 benign 볼륨을 그대로 써서, 부하가 있을 때만
+	 * 실제 트래픽처럼 초록 forward로 흐르게 한다. 부하가 없는 서비스엔 죽은 선을 남기지 않는다.
+	 */
+	private List<EdgeResponse> withDatastoreEdges(
+			List<EdgeResponse> edges, Map<String, VerdictCounts> byService) {
+		if (datastoreEdges.isEmpty()) {
+			return edges;
+		}
+		Set<String> present = new HashSet<>();
+		for (EdgeResponse e : edges) {
+			present.add(e.source() + "->" + e.target());
+		}
+		List<EdgeResponse> out = new ArrayList<>(edges);
+		for (String[] pair : datastoreEdges) {
+			String source = pair[0];
+			String target = pair[1];
+			// 같은 경로가 실제로 관측됐다면(포트 예외가 풀린 경우 등) 그 엣지를 그대로 둔다.
+			if (present.contains(source + "->" + target)) {
+				continue;
+			}
+			VerdictCounts svc = byService.get(source);
+			long benign = svc == null ? 0 : svc.benign();
+			if (benign <= 0) {
+				continue;
+			}
+			VerdictCounts counts = new VerdictCounts(benign, 0, 0, 0);
+			out.add(new EdgeResponse(source + "->" + target, source, target, "TCP",
+					counts.total(), CountsResponse.of(counts), "FORWARD", null, 0));
+		}
+		return out;
+	}
+
+	private static List<String[]> parseEdges(String[] specs) {
+		List<String[]> out = new ArrayList<>();
+		for (String spec : specs) {
+			int arrow = spec == null ? -1 : spec.indexOf("->");
+			if (arrow < 0) {
+				continue;
+			}
+			String source = spec.substring(0, arrow).trim();
+			String target = spec.substring(arrow + 2).trim();
+			if (!source.isEmpty() && !target.isEmpty()) {
+				out.add(new String[] {source, target});
+			}
+		}
+		return out;
 	}
 
 	/** 상위 MAX_EDGES만 남기고 나머지는 source별 EXTERNAL 엣지 하나로 접는다. */
