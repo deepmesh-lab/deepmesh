@@ -162,10 +162,6 @@ export function TopologyPanel({
           <i style={{ background: 'var(--verdict-relay)' }} />
           응답 대체 (relay)
         </span>
-        <span style={{ color: 'var(--color-text-subtle)' }}>
-          <i className="dash" />
-          경로만 존재 (트래픽 없음)
-        </span>
 
         <button
           type="button"
