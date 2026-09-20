@@ -73,37 +73,38 @@ export function isUnmonitoredWorkload(node: TopologyNode): boolean {
  * 자동 배치(dagre)는 간선이 늘 때마다 자리가 바뀌어 선이 꼬였다.
  * 구성이 고정된 토폴로지라 자리를 직접 정하는 편이 훨씬 읽기 좋다.
  *
- *   행\열      0           1          2         3          4
- *     0        ·           ·        post      mysql
- *     1    external    frontend      ·        auth    Master Node
- *     2        ·           ·       comment      ·      (API Server 포함)
+ *   행\열     0          1        2       3         4          5
+ *     0       ·          ·        ·      post      mysql
+ *     1    external   frontend    ·       ·        auth     Master Node
+ *     2       ·          ·        ·     comment
  *
  * **빈 칸은 남는 자리가 아니라 통로다.** 간선은 두 상자를 잇는 직선이라, 중간에 노드가
- * 있으면 그대로 관통한다.
+ * 있으면 그대로 관통한다. 열 2를 통째로 비워 frontend와 백엔드 사이에 간격을 두고,
+ * 열 3의 행 1을 비워 comment→post 수직선이 통과할 통로로 쓴다.
  *
- *   external → frontend    행 1 인접 — 외부 트래픽 진입
- *   frontend → post        우상 대각선 — 시나리오 2(r1). 변조 응답이 흘러간 방향
- *   frontend → comment     우하 대각선
- *   frontend → auth        행 1 직진 — (1,2)를 비워 둔 통로
- *   post ↔ comment         열 2 수직 — 두 상자를 곧게 잇는다
+ * 아래 다섯 간선이 **수직·수평**으로 곧게 떨어지도록 자리를 맞췄다 (나머지는 대각선):
+ *
+ *   external ↔ frontend    행 1 인접 — 수평
+ *   frontend → auth        행 1 직진 — 수평 (열 2·3을 비워 둔 통로)
+ *   post → mysql           행 0 인접 — 수평
+ *   comment → post         열 3 수직 — 사이(행 1)를 비워 곧게 잇는다
+ *   auth → mysql           열 4 수직 — 표시용(3306 미관측)
  *   auth → API Server      바로 옆 칸 — 시나리오 1(k1)
- *   auth → mysql           열 3 수직 — 표시용(3306 미관측)
+ *   frontend → post·comment  대각선 (불가피)
  *
- * frontend·post·comment를 가운데로 모아 external→서비스→auth→Master가 좌우로 흐르고,
- * post(위)·comment(아래)가 세로로 벌어져 mysql·auth로 가는 대각선이 겹치지 않는다.
+ * Master Node는 auth보다 높다. 같은 행에서 가운데 정렬하면 윗변이 어긋나므로, 배치 후
+ * auth의 윗변(y)에 맞춰 내린다(layoutTopology 끝부분).
  *
  * kubernetes는 격자에 없다. Master Node 상자 안의 블록으로 들어간다.
- *
- * 노드를 새로 배치할 때는 **가장 긴 간선의 경로부터 비우고** 나머지를 채우는 편이 낫다.
  */
 const GRID: Record<string, [number, number]> = {
+  post: [0, 3],
+  mysql: [0, 4],
   external: [1, 0],
   frontend: [1, 1],
-  post: [0, 2],
-  comment: [2, 2],
-  mysql: [0, 3],
-  auth: [1, 3],
-  'control-plane': [1, 4],
+  auth: [1, 4],
+  'control-plane': [1, 5],
+  comment: [2, 3],
 }
 
 const COLUMN_GAP = 130
@@ -197,6 +198,14 @@ export function layoutTopology(
       ...size,
     }
   })
+
+  // Master Node는 auth보다 훨씬 높다. 같은 행에서 가운데 정렬하면 두 상자의 윗변이
+  // 어긋난다 — auth의 윗변(y)에 맞춰 내려, 머리 줄이 나란히 보이게 한다.
+  const master = placements[CONTROL_PLANE_ID]
+  const auth = placements.auth
+  if (master && auth) {
+    master.y = auth.y
+  }
 
   return placements
 }
