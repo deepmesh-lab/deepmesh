@@ -264,14 +264,14 @@ export function GuidePage() {
 
           <blockquote className="guide-warn">
             <b>
-              <code>FORWARD</code>는 <code>benign</code>과 <code>cleared</code>를 둘 다
-              포함합니다.
+              대시보드는 <code>benign</code>과 <code>cleared</code>를 합쳐{' '}
+              <code>FORWARD</code>로 표시합니다.
             </b>
             <br />
-            cleared도 결국 전달된 트래픽이기 때문입니다. 그래서 화면의 네 분류에는{' '}
-            <b>forward라는 말을 쓰지 않습니다</b> — 그렇게 쓰면 나란히 놓인 cleared가
-            forward가 아닌 것처럼 읽힙니다. forward는 탐지 이벤트 상세의{' '}
-            <code>verdict</code> 칸에서만 나옵니다.
+            둘 다 결국 전달된 트래픽이고, 집행 축의 <code>FORWARD</code>와 범위가 같습니다.
+            개요 카드·토폴로지·로그 조회는 <b>forward / drop / relay</b> 세 갈래로
+            보여주고, 둘을 구분해야 할 때는 탐지 이벤트 상세의 <code>category</code> 칸을
+            봅니다.
           </blockquote>
 
           <div className="guide-table-wrap">

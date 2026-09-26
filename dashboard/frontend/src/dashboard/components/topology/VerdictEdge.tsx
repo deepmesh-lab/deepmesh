@@ -9,13 +9,14 @@ import {
 } from '@xyflow/react'
 import type { TopologyEdge } from '../../internal/types'
 import { formatKstTime } from '../../internal/time'
+import { displayCountOf } from '../../internal/verdict'
 import {
-  CIRCLE_SLOTS,
   EDGE_GAP,
   RECT_SLOT_SPACING,
   arrowHead,
+  capsuleAnchor,
   centerOf,
-  circleAnchor,
+  exitPoint,
   rectAnchor,
   selfLoop,
   shift,
@@ -24,18 +25,23 @@ import {
 
 /** 하나의 통신 경로가 판정별로 여러 간선으로 갈라진다. */
 /**
- * 간선 한 가닥의 종류. **category와 같은 이름을 쓴다.**
+ * 간선 한 가닥의 종류. **화면 분류(DisplayCategory)와 같은 이름을 쓴다.**
  *
- * 예전에는 benign 가닥을 'forward'라 불렀는데, forward는 집행 축(verdict)의 값이라
- * cleared까지 포함한다. 한 화면에서 같은 말이 두 가지를 가리키면 반드시 헷갈린다.
+ * forward는 benign과 cleared를 합친 한 가닥이다. 집행 축(verdict)의 FORWARD와 같은
+ * 범위라 한 화면에서 같은 말이 두 가지를 가리키지 않는다.
  */
-export type EdgeKind = 'idle' | 'benign' | 'cleared' | 'drop' | 'relay'
+export type EdgeKind = 'idle' | 'forward' | 'drop' | 'relay'
 
 export type VerdictEdgeData = Record<string, unknown> & {
   edge: TopologyEdge
   kind: EdgeKind
   /** 같은 노드 쌍의 간선이 겹치지 않도록 가운데를 부풀리는 정도 */
   offset: number
+  /**
+   * forward 가닥에만 의미가 있다. 평소 forward는 점선이 방향대로 흐르고,
+   * 방금 FORWARD 이벤트가 들어온 경로면 true — 1초간 굵은 실선으로 바뀐다.
+   */
+  pulse: boolean
   isFresh: boolean
   /** 클릭해서 검증 과정을 펼칠 수 있는 간선인지 */
   inspectable: boolean
@@ -46,52 +52,37 @@ export type VerdictFlowEdge = Edge<VerdictEdgeData, 'verdict'>
 
 const KIND_LABEL: Record<EdgeKind, string> = {
   idle: '경로만 존재 (집계 구간 내 트래픽 없음)',
-  benign: '정상 판정 (benign)',
-  cleared: '교차 검증 통과 (cleared)',
+  forward: '전달 (forward)',
   drop: '요청 차단 (drop)',
   relay: '응답 대체 (relay)',
 }
 
-/** `.pod-node`의 원 위치 — padding-left 6px + 지름 26px. VerifyEdge와 같은 값이다. */
-const DISC_CENTER_X = 6 + 13
-const DISC_RADIUS = 13
-
 /**
- * Pod는 상자 가운데가 아니라 **왼쪽 원**이 실제 대상이다.
- * 자기 자신 간선을 Pod 사이로 그리면서 필요해졌다 — 상자 중심을 쓰면 선이 원에서
- * 떨어져 허공에 뜬 것처럼 보인다.
+ * 선의 한쪽 끝을 노드 경계에 붙인다.
+ *
+ * Pod(알약)와 구성요소 블록(API Server 등)은 **중심끼리 이은 직선이 경계를 뚫는 점**에
+ * 정확히 붙인다. 그래야 Pod → Pod, Pod → API Server가 최단 직선이 된다.
+ *
+ * 서비스 상자는 경계 접합점 칸(RECT_SLOT_SPACING)에 스냅한다. 양방향 간선을 벌리는 것은
+ * 여기가 아니라 straight 빌더에서 **선 전체를 한 법선으로 평행 이동**해 처리한다 —
+ * 끝점마다 법선을 따로 구하면 두 방향이 같은 쪽으로 밀려 오히려 겹친다.
  */
-function originOf(node: InternalNode<Node>): Point {
-  if (node.type === 'pod') {
-    return {
-      x: node.internals.positionAbsolute.x + DISC_CENTER_X,
-      y: node.internals.positionAbsolute.y + (node.measured.height ?? 0) / 2,
-    }
-  }
-  return centerOf(node)
-}
-
 function attachTo(
   node: InternalNode<Node>,
   origin: Point,
   toward: Point,
-  offset: number,
 ): Point {
   if (node.type === 'pod') {
-    return circleAnchor(origin, DISC_RADIUS, toward, CIRCLE_SLOTS, EDGE_GAP)
+    return capsuleAnchor(node, toward, EDGE_GAP)
   }
   const dx = toward.x - origin.x
   const dy = toward.y - origin.y
   const length = Math.hypot(dx, dy) || 1
   const forward = { x: dx / length, y: dy / length }
-  const normal = { x: -forward.y, y: forward.x }
-  return rectAnchor(
-    node,
-    shift(origin, normal, offset),
-    forward,
-    RECT_SLOT_SPACING,
-    EDGE_GAP,
-  )
+  if (node.type === 'component') {
+    return exitPoint(node, origin, forward, EDGE_GAP)
+  }
+  return rectAnchor(node, origin, forward, RECT_SLOT_SPACING, EDGE_GAP)
 }
 
 export function VerdictEdge({
@@ -121,14 +112,22 @@ export function VerdictEdge({
   const straight = loop
     ? null
     : (() => {
-        // 선 전체를 나란히 민 뒤, 둘레의 가상 접합점 중 가장 가까운 칸에 붙인다.
-        // 이상적 지점이 조금이라도 다르면 반드시 다른 칸이라 시작·끝이 겹치지 않는다.
-        // Pod는 상자가 아니라 원 둘레에 붙는다.
-        const sourceOrigin = originOf(sourceNode)
-        const targetOrigin = originOf(targetNode)
+        // 끝점은 중심끼리 이은 직선이 경계를 뚫는 자리에 붙인다.
+        const sourceOrigin = centerOf(sourceNode)
+        const targetOrigin = centerOf(targetNode)
 
-        const from = attachTo(sourceNode, sourceOrigin, targetOrigin, offset)
-        const to = attachTo(targetNode, targetOrigin, sourceOrigin, offset)
+        const fromAnchor = attachTo(sourceNode, sourceOrigin, targetOrigin)
+        const toAnchor = attachTo(targetNode, targetOrigin, sourceOrigin)
+
+        // 양방향 간선이 겹치지 않게 선 전체를 한 법선으로 평행 이동한다. source→target
+        // 기준 법선 하나를 두 끝에 똑같이 적용하므로, 반대 방향 간선은 법선이 뒤집혀
+        // 반대편으로 갈라진다. offset이 0이면(단방향·Pod·블록) 그대로 둔다.
+        const dx = targetOrigin.x - sourceOrigin.x
+        const dy = targetOrigin.y - sourceOrigin.y
+        const length = Math.hypot(dx, dy) || 1
+        const normal = { x: -dy / length, y: dx / length }
+        const from = shift(fromAnchor, normal, offset)
+        const to = shift(toAnchor, normal, offset)
         // 접합점으로 옮겨 붙은 뒤라 화살촉은 실제 그어진 선의 방향을 따라야 한다.
         const span = Math.hypot(to.x - from.x, to.y - from.y) || 1
         return {
@@ -148,26 +147,27 @@ export function VerdictEdge({
   const kind = data?.kind ?? 'idle'
   const edge = data?.edge
 
-  // 트래픽이 많을수록 빨리 점멸한다.
+  const forwardCount = edge ? displayCountOf(edge.counts, 'forward') : 0
+  // 트래픽이 많을수록 점선이 빨리 흐른다.
   const period =
-    kind === 'benign'
-      ? Math.max(0.6, 2.0 - Math.min(1.4, (edge?.counts.benign ?? 0) / 900))
+    kind === 'forward'
+      ? Math.max(0.5, 1.4 - Math.min(0.9, forwardCount / 1500))
       : 1
 
-  const blink = { ['--fd' as string]: `${period.toFixed(2)}s` }
+  const flow = { ['--fd' as string]: `${period.toFixed(2)}s` }
+  const pulse = kind === 'forward' && data?.pulse ? 'pulse' : ''
 
   return (
     <>
       <path
         d={path}
-        className={`verdict-edge ${kind} ${hovered ? 'hovered' : ''} ${data?.selected ? 'selected' : ''}`}
-        style={blink}
+        className={`verdict-edge ${kind} ${pulse} ${hovered ? 'hovered' : ''} ${data?.selected ? 'selected' : ''}`}
+        style={flow}
       />
-      {/* 화살촉도 path로 그린다. marker로는 점멸에 맞춰 색을 바꿀 수 없다. */}
+      {/* 화살촉도 path로 그린다. marker로는 흐름 상태에 맞춰 색을 바꿀 수 없다. */}
       <path
         d={arrowHead(to, heading)}
-        className={`verdict-arrow ${kind}`}
-        style={blink}
+        className={`verdict-arrow ${kind} ${pulse}`}
       />
       {/* 마우스를 받기 위한 투명한 두꺼운 선 */}
       <path
@@ -190,10 +190,8 @@ export function VerdictEdge({
             </div>
             <div className="tip-kind">{KIND_LABEL[kind]}</div>
             <dl className="tip-counts">
-              <dt>정상</dt>
-              <dd>{edge.counts.benign.toLocaleString()}</dd>
-              <dt>교차 검증 통과</dt>
-              <dd>{edge.counts.cleared.toLocaleString()}</dd>
+              <dt>전달</dt>
+              <dd>{forwardCount.toLocaleString()}</dd>
               <dt>차단</dt>
               <dd>{edge.counts.drop.toLocaleString()}</dd>
               <dt>응답 대체</dt>

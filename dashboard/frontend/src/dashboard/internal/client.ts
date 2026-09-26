@@ -17,13 +17,17 @@ import {
   isMockConnected,
   setMockConnected,
 } from './mock/mockStream'
-import { resetStore } from './mock/mockState'
+import {
+  isNormalTraffic,
+  onNormalTrafficChange,
+  resetStore,
+  setNormalTraffic,
+} from './mock/mockState'
 import {
   isScenarioPlaying,
   onScenarioPlayingChange,
   playScenario1,
   playScenario2,
-  playScenario3,
 } from './mock/scenarios'
 import type {
   DashboardApi,
@@ -104,9 +108,14 @@ export function createDashboardStream(
  * 명세상 대시보드 API는 GET 전용이라 서버에 시나리오 재생을 요청할 수단이 없다.
  */
 export type MockControls = {
+  /** k1 — auth Pod의 K8s API 정찰, DROP */
   playScenario1: () => void
+  /** r1 — frontend Pod의 응답 위조(XSS), RELAY */
   playScenario2: () => void
-  playScenario3: () => void
+  /** 배경 정상 트래픽 켜기·끄기 */
+  setNormalTraffic: (value: boolean) => void
+  isNormalTraffic: () => boolean
+  onNormalTrafficChange: (listener: (value: boolean) => void) => () => void
   reset: () => void
   setConnected: (value: boolean) => void
   isConnected: () => boolean
@@ -117,7 +126,9 @@ export type MockControls = {
 const controls: MockControls = {
   playScenario1,
   playScenario2,
-  playScenario3,
+  setNormalTraffic,
+  isNormalTraffic,
+  onNormalTrafficChange,
   reset: resetStore,
   setConnected: setMockConnected,
   isConnected: isMockConnected,

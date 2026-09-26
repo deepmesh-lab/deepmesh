@@ -104,7 +104,10 @@ export const createMockStream: DashboardStreamFactory = (options = {}) => {
     const { fromMs, toMs } = rangeNow(timeRange)
     const nodes = buildTopologyNodes(fromMs, toMs)
     const edges = buildTopologyEdges(fromMs, toMs)
-    const addedIds = new Set(consumeNewEdges().map((edge) => edge.id))
+    // 시나리오가 새로 만든 경로 표시는 비워 둔다. 무엇이 "추가"인지는 아래에서 직전
+    // 스냅샷과 비교해 정한다 — 트래픽이 0인 간선은 목록에서 빠지므로, 0에서 다시 살아난
+    // 간선도 추가로 보내야 화면에 나타난다.
+    consumeNewEdges()
 
     const updatedNodes = nodes.filter((node) => {
       const previous = lastNodes.get(node.id)
@@ -115,15 +118,20 @@ export const createMockStream: DashboardStreamFactory = (options = {}) => {
       )
     })
 
+    // useTopology는 updatedEdges를 **이미 있는** 간선에만 병합한다. 처음 보는 간선은
+    // addedEdges(완전 객체)로, 목록에서 빠진 간선은 removedEdgeIds로 보내야 한다.
+    const addedEdges = edges.filter((edge) => !lastEdges.has(edge.id))
+
     const updatedEdges = edges.filter((edge) => {
-      if (addedIds.has(edge.id)) {
-        return false
-      }
       const previous = lastEdges.get(edge.id)
-      return !previous || previous.total !== edge.total
+      return previous !== undefined && previous.total !== edge.total
     })
 
-    const addedEdges = edges.filter((edge) => addedIds.has(edge.id))
+    const currentEdgeIds = new Set(edges.map((edge) => edge.id))
+    // 구간이 지나 판정이 0이 된 간선. 실제 백엔드처럼 그래프에서 사라진다.
+    const removedEdgeIds = [...lastEdges.keys()].filter(
+      (id) => !currentEdgeIds.has(id),
+    )
 
     lastNodes = new Map(nodes.map((node) => [node.id, node]))
     lastEdges = new Map(edges.map((edge) => [edge.id, edge]))
@@ -131,7 +139,8 @@ export const createMockStream: DashboardStreamFactory = (options = {}) => {
     if (
       updatedNodes.length === 0 &&
       updatedEdges.length === 0 &&
-      addedEdges.length === 0
+      addedEdges.length === 0 &&
+      removedEdgeIds.length === 0
     ) {
       return
     }
@@ -144,7 +153,7 @@ export const createMockStream: DashboardStreamFactory = (options = {}) => {
       addedNodes: [],
       addedEdges,
       removedNodeIds: [],
-      removedEdgeIds: [],
+      removedEdgeIds,
     }
     emit('topology', payload)
   }

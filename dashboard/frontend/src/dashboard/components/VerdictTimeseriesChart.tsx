@@ -11,9 +11,13 @@ import {
   YAxis,
 } from 'recharts'
 import { formatKstTime } from '../internal/time'
-import { VERDICT_CATEGORIES, type TimeseriesResponse } from '../internal/types'
+import type { TimeseriesResponse } from '../internal/types'
 import { latencyColor, verdictColor } from '../internal/theme'
-import { VERDICT_LABEL } from '../internal/verdict'
+import {
+  DISPLAY_CATEGORIES,
+  DISPLAY_LABEL,
+  displayCountOf,
+} from '../internal/verdict'
 
 const AXIS_STYLE = {
   fontSize: 10,
@@ -91,11 +95,10 @@ export function VerdictTimeseriesChart({ data, height = 200 }: Props) {
     )
   }
 
-  // 4개 분류가 상호 배타적이므로 그대로 스택으로 쌓을 수 있다. (명세 1-5)
+  // 화면 3분류도 상호 배타적이므로 그대로 스택으로 쌓을 수 있다. (명세 1-5)
   const rows = data.buckets.map((bucket) => ({
     ts: formatKstTime(bucket.ts),
-    benign: bucket.benign,
-    cleared: bucket.cleared,
+    forward: displayCountOf(bucket, 'forward'),
     drop: bucket.drop,
     relay: bucket.relay,
   }))
@@ -108,16 +111,16 @@ export function VerdictTimeseriesChart({ data, height = 200 }: Props) {
         <YAxis tick={AXIS_STYLE} tickLine={false} axisLine={false} width={46} />
         <Tooltip contentStyle={TOOLTIP_STYLE} />
         <Legend wrapperStyle={{ fontSize: 11, fontFamily: 'var(--sans)' }} />
-        {VERDICT_CATEGORIES.map((category) => (
+        {DISPLAY_CATEGORIES.map((display) => (
           <Area
-            key={category}
+            key={display}
             type="linear"
-            dataKey={category}
-            name={VERDICT_LABEL[category]}
+            dataKey={display}
+            name={DISPLAY_LABEL[display]}
             stackId="verdict"
-            stroke={verdictColor(category)}
-            fill={verdictColor(category)}
-            fillOpacity={category === 'benign' ? 0.16 : 0.7}
+            stroke={verdictColor(display)}
+            fill={verdictColor(display)}
+            fillOpacity={display === 'forward' ? 0.16 : 0.7}
             strokeWidth={1.6}
             isAnimationActive={false}
           />

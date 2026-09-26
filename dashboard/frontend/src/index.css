@@ -472,7 +472,7 @@ code,
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -551,11 +551,8 @@ code,
   background: var(--color-text-disabled);
 }
 
-.card.benign::before {
-  background: var(--verdict-benign);
-}
-.card.cleared::before {
-  background: var(--verdict-cleared);
+.card.forward::before {
+  background: var(--verdict-forward);
 }
 .card.drop::before {
   background: var(--verdict-drop);
@@ -586,11 +583,8 @@ code,
   margin-top: 3px;
 }
 
-.card.benign .n {
-  color: var(--verdict-benign);
-}
-.card.cleared .n {
-  color: var(--verdict-cleared);
+.card.forward .n {
+  color: var(--verdict-forward);
 }
 .card.drop .n {
   color: var(--verdict-drop);
@@ -763,41 +757,103 @@ code,
   color: var(--verdict-drop);
 }
 
-/* Pod — 원 */
+/* 미감시 워크로드(mysql 등) — 서비스와 같은 상자·Pod 원이되 무채색. 판정이 없으니 색을 쓰지 않는다 */
+/* Master Node도 counts가 없어 UNMONITORED다. 브랜드 색을 유지하도록 뺀다 */
+.svc-group.UNMONITORED:not(.CONTROL_PLANE) {
+  border-color: var(--color-text);
+  background: color-mix(in srgb, var(--color-surface-sunken) 90%, transparent);
+}
+
+.svc-tag {
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  background: var(--palette-neutral-200);
+}
+
+/* Pod — 알약. 왼쪽 원에 상태 아이콘, 오른쪽에 이름.
+   간선은 이 알약의 바깥 경계에 붙는다(geometry.ts capsuleAnchor) */
 .pod-node {
-  width: 96px;
-  height: 42px;
+  width: 100px;
+  height: 34px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding-left: 6px;
+  gap: 6px;
+  padding: 0 8px 0 4px;
+  border: 1.5px solid var(--color-success);
+  border-radius: 999px;
+  background: var(--color-surface);
+  box-shadow: var(--sh);
 }
 
 .pod-node .disc {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   flex: none;
   border-radius: 50%;
-  background: var(--color-surface);
-  border: 2px solid var(--color-success);
-  box-shadow: var(--sh);
+  background: var(--color-success-weak);
+  color: var(--color-success);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 12px;
   font-weight: 800;
   line-height: 1;
-  color: var(--verdict-drop);
 }
 
-.pod-node.COMPROMISED .disc {
+/* 서비스 기술 아이콘(nginx·Spring·MySQL). 원래 색을 살리도록 원 배경은 흰색으로 둔다 */
+.pod-node .disc img {
+  width: 16px;
+  height: 16px;
+  display: block;
+  object-fit: contain;
+}
+
+.pod-node .disc:has(img) {
+  background: var(--color-surface);
+  box-shadow: inset 0 0 0 1px var(--color-border-subtle);
+}
+
+.pod-node .disc svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pod-node.COMPROMISED {
   border-color: var(--verdict-drop);
   background: var(--verdict-drop-weak);
 }
 
-.pod-node.DEGRADED .disc {
+.pod-node.COMPROMISED .disc {
+  background: var(--verdict-drop);
+  color: var(--color-surface);
+}
+
+.pod-node.DEGRADED {
   border-color: var(--color-warning);
+}
+
+.pod-node.DEGRADED .disc {
   background: var(--color-warning-weak);
+  color: var(--color-warning-strong);
+}
+
+.pod-node.UNMONITORED {
+  border-color: var(--color-text);
+}
+
+.pod-node.UNMONITORED .disc {
+  background: var(--palette-neutral-100);
+  color: var(--color-text);
 }
 
 .pod-node .pod-name {
@@ -819,7 +875,9 @@ code,
   background: color-mix(in srgb, var(--color-primary-weak) 85%, transparent);
 }
 
+/* 안의 모듈 이름(.component-name)과 같은 크기 */
 .svc-group.CONTROL_PLANE .svc-group-head .name {
+  font-size: 12px;
   color: var(--color-primary-strong);
 }
 
@@ -829,8 +887,8 @@ code,
 
 /* Control Plane 구성요소 — Pod가 아니므로 원이 아니라 사각형 블록 */
 .component-node {
-  width: 148px;
-  height: 34px;
+  width: 188px;
+  height: 46px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -839,10 +897,38 @@ code,
   border-radius: 5px;
   background: var(--color-surface);
   box-shadow: var(--sh);
+  gap: 6px;
+}
+
+/* API Server 아이콘(k8s_api_icon.png). Master Node 로고와 같은 크기로 맞춘다 */
+img.component-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  flex: none;
+}
+
+/* Master Node 머리글의 Kubernetes 로고 */
+.svc-group-logo {
+  width: 24px;
+  height: 24px;
+  display: block;
+  flex: none;
+}
+
+.component-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .component-name {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--color-primary-strong);
   overflow: hidden;
@@ -1166,6 +1252,26 @@ code,
   color: var(--color-text-subtle);
 }
 
+.plain-node .plain-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+/* 클러스터 외부 — 알약 모양. 서비스 상자(각진 사각형)와 모양부터 달라야 "밖"으로 읽힌다 */
+.plain-node.EXTERNAL {
+  width: 132px;
+  height: 58px;
+  flex-direction: row;
+  gap: 8px;
+  border-radius: 999px;
+}
+
+.plain-node.EXTERNAL .plain-text {
+  align-items: flex-start;
+}
+
 /* 줌 컨트롤 · 격자 토글 */
 /* 라벨 레이어를 간선보다 앞에 둔다 */
 .topo .react-flow__edgelabel-renderer {
@@ -1215,30 +1321,29 @@ code,
   stroke-dasharray: 4 6;
 }
 
-/* benign은 평소 회색 점선이고, 트래픽이 도착하는 주기에만 초록 실선으로 바뀐다.
-   애니메이션이 꺼진 환경(prefers-reduced-motion)에서는 아래 기본값이 그대로 보인다. */
-.verdict-edge.benign {
-  stroke: var(--verdict-benign);
-  stroke-width: 2;
-  animation: traffic var(--fd, 1.4s) steps(1, end) infinite;
+/* forward(benign+cleared)는 구간에 트래픽이 있으면 점선이 source → target 방향으로
+   계속 흐른다 — 평시 배경이다. drop·relay보다 얇고 조금 흐리게 둔다.
+   FORWARD 이벤트가 들어온 순간(.pulse)에는 drop·relay처럼 굵은 실선으로 1초간 바뀐다. */
+.verdict-edge.forward {
+  stroke: var(--verdict-forward);
+  stroke-width: 1.8;
+  opacity: 0.75;
+  stroke-dasharray: 8 6;
+  animation: forward-flow var(--fd, 1s) linear infinite;
 }
 
-@keyframes traffic {
-  0% {
-    stroke: var(--color-edge);
-    stroke-width: 1.6;
-    stroke-dasharray: 4 6;
-  }
-  50% {
-    stroke: var(--verdict-benign);
-    stroke-width: 2;
-    stroke-dasharray: none;
-  }
+.verdict-edge.forward.pulse {
+  stroke-width: 2.6;
+  opacity: 1;
+  stroke-dasharray: none;
+  animation: none;
 }
 
-.verdict-edge.cleared {
-  stroke: var(--verdict-cleared);
-  stroke-width: 2.4;
+/* dasharray 한 주기(8+6)만큼 음수로 밀면 점선이 경로 진행 방향으로 이동한다 */
+@keyframes forward-flow {
+  to {
+    stroke-dashoffset: -14;
+  }
 }
 
 .verdict-edge.drop {
@@ -1263,13 +1368,13 @@ code,
   fill: var(--color-edge);
 }
 
-.verdict-arrow.benign {
-  fill: var(--verdict-benign);
-  animation: traffic-arrow var(--fd, 1.4s) steps(1, end) infinite;
+.verdict-arrow.forward {
+  fill: var(--verdict-forward);
+  opacity: 0.75;
 }
 
-.verdict-arrow.cleared {
-  fill: var(--verdict-cleared);
+.verdict-arrow.forward.pulse {
+  opacity: 1;
 }
 
 .verdict-arrow.drop {
@@ -1278,16 +1383,6 @@ code,
 
 .verdict-arrow.relay {
   fill: var(--verdict-relay);
-}
-
-/* 트래픽이 흐르지 않는 위상에서는 화살촉도 회색이어야 한다 */
-@keyframes traffic-arrow {
-  0% {
-    fill: var(--color-edge);
-  }
-  50% {
-    fill: var(--verdict-benign);
-  }
 }
 
 .verify-arrow {
@@ -1337,12 +1432,8 @@ code,
   font-size: 11px;
 }
 
-.edge-tip.benign {
-  border-left-color: var(--verdict-benign);
-}
-
-.edge-tip.cleared {
-  border-left-color: var(--verdict-cleared);
+.edge-tip.forward {
+  border-left-color: var(--verdict-forward);
 }
 
 .edge-tip.drop {
@@ -1371,12 +1462,8 @@ code,
   color: var(--verdict-relay-text);
 }
 
-.edge-tip.benign .tip-kind {
-  color: var(--verdict-benign);
-}
-
-.edge-tip.cleared .tip-kind {
-  color: var(--verdict-cleared);
+.edge-tip.forward .tip-kind {
+  color: var(--verdict-forward);
 }
 
 .edge-tip .tip-counts {
@@ -1511,8 +1598,12 @@ code,
   display: block;
 }
 
-/* 배지는 verdict가 아니라 category를 표시한다. 이벤트로 남는 FORWARD는 예외 없이
-   cleared라서, verdict를 보여주면 "정상 전달"로 오해된다. */
+/* 배지는 화면 분류(forward/drop/relay)를 표시한다. benign·cleared는 forward로 합친다. */
+.badge.forward {
+  background: var(--verdict-forward-weak);
+  color: var(--verdict-forward);
+}
+
 .badge.drop {
   background: var(--verdict-drop-weak);
   color: var(--verdict-drop);
@@ -2232,13 +2323,9 @@ td:first-child {
     transition: none !important;
   }
 
-  /* 간선 점멸은 장식이 아니라 "지금 트래픽이 흐르는가"를 나타내는 정보다.
-     1Hz 안팎이라 광과민성 기준(3Hz)에도 걸리지 않으므로 유지한다. */
-  .verdict-edge.benign {
-    animation: traffic var(--fd, 1.4s) steps(1, end) infinite !important;
-  }
-
-  .verdict-arrow.benign {
-    animation: traffic-arrow var(--fd, 1.4s) steps(1, end) infinite !important;
+  /* 간선 흐름은 장식이 아니라 "지금 트래픽이 흐르는가"를 나타내는 정보다.
+     깜빡임이 아니라 점선의 연속 이동이라 광과민성 기준에도 걸리지 않으므로 유지한다. */
+  .verdict-edge.forward:not(.pulse) {
+    animation: forward-flow var(--fd, 1s) linear infinite !important;
   }
 }

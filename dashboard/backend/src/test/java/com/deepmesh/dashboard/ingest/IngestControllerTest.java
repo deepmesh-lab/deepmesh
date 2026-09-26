@@ -43,7 +43,7 @@ class IngestControllerTest {
 			    { "occurredAt": "2026-08-08T13:21:06.115+09:00", "direction": "REQUEST",
 			      "sessionId": "s-9f2a41c7", "srcIp": "10.244.1.5", "srcPort": 48812,
 			      "dstIp": "10.96.0.1", "dstPort": 443, "protocol": "TCP",
-			      "modelVerdict": "ATTACK", "ocsvmScore": -0.4127,
+			      "modelVerdict": "ATTACK", "ocsvmScore": -0.4127, "threshold": -0.143,
 			      "verdict": "DROP", "category": "drop",
 			      "verificationStage": "REQUEST_VERIFIER", "verificationPassed": false,
 			      "detectionLatencyMs": 0.0, "signature": "TCP|10.96.0.1:443" }
@@ -67,6 +67,7 @@ class IngestControllerTest {
 		assertThat(saved.getCategory()).isEqualTo("drop");
 		assertThat(saved.getDirection()).isEqualTo("REQUEST");
 		assertThat(saved.getOcsvmScore()).isEqualTo(-0.4127);
+		assertThat(saved.getThreshold()).isEqualTo(-0.143);
 		assertThat(saved.getPeerServiceName()).isNull();        // K8s 역매핑 전이라 null
 		assertThat(saved.getSummary()).contains("미관측 요청 차단");
 	}

@@ -6,6 +6,7 @@
  * **색 값 자체는 여전히 `styles/tokens.css` 한 곳에만 있다.**
  */
 import type { VerdictCategory } from './types'
+import type { DisplayCategory } from './verdict'
 
 const cache = new Map<string, string>()
 
@@ -32,9 +33,11 @@ function token(name: string, fallback: string): string {
   return value
 }
 
-/** 판정 4분류 색. fallback은 tokens.css의 현재 값과 같게 유지한다. */
-export function verdictColor(category: VerdictCategory): string {
+/** 판정 색(4분류 + 화면 분류 forward). fallback은 tokens.css의 현재 값과 같게 유지한다. */
+export function verdictColor(category: VerdictCategory | DisplayCategory): string {
   switch (category) {
+    case 'forward':
+      return token('--verdict-forward', '#16a34a')
     case 'benign':
       return token('--verdict-benign', '#16a34a')
     case 'cleared':
@@ -47,7 +50,9 @@ export function verdictColor(category: VerdictCategory): string {
 }
 
 /** 흰 배경에서 글자로 쓸 때. 주황 원색은 대비가 모자라 어두운 단계를 쓴다. */
-export function verdictTextColor(category: VerdictCategory): string {
+export function verdictTextColor(
+  category: VerdictCategory | DisplayCategory,
+): string {
   return category === 'relay'
     ? token('--verdict-relay-text', '#b03a0f')
     : verdictColor(category)

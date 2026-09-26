@@ -7,7 +7,7 @@ type CardSpec = {
   /** 값 변화를 추적하는 식별자. 화면에는 label이 나간다. */
   key: string
   label: string
-  tone: '' | 'benign' | 'cleared' | 'drop' | 'relay'
+  tone: '' | 'forward' | 'drop' | 'relay'
   value: string
   sub: string
   /** 있으면 sub 아래 줄에 붙는다 */
@@ -24,18 +24,12 @@ function buildCards(summary: SummaryResponse): CardSpec[] {
       sub: '판정된 HTTP 메시지 수 — 로그 조회와 같은 단위',
     },
     {
-      key: 'benignCount',
-      label: '정상 판정 (benign)',
-      tone: 'benign',
-      value: summary.benignCount.toLocaleString(),
-      sub: '모델이 정상으로 판정 — 검증 불필요',
-    },
-    {
-      key: 'clearedCount',
-      label: '교차 검증 통과 (cleared)',
-      tone: 'cleared',
-      value: summary.clearedCount.toLocaleString(),
-      sub: '모델은 이상, 교차 검증이 뒤집음',
+      // benign + cleared. 둘 다 전달된 트래픽이다. (verdict.ts DisplayCategory)
+      key: 'forwardCount',
+      label: '전달 (forward)',
+      tone: 'forward',
+      value: (summary.benignCount + summary.clearedCount).toLocaleString(),
+      sub: '서비스로 그대로 전달된 트래픽',
     },
     {
       key: 'dropCount',
@@ -52,22 +46,20 @@ function buildCards(summary: SummaryResponse): CardSpec[] {
       sub: '정상 응답으로 대체',
     },
     {
-      // 전면은 차단률이다. 이상 판정률은 교차 검증이 뒤집은 건(cleared)까지 세므로
-      // 큰 숫자가 그대로 위험으로 읽힌다 — 오탐만 있어도 100%가 된다.
-      // 실제로 무엇을 막았는지가 먼저 보여야 한다.
+      // 차단률만 보인다. 이상 판정률은 교차 검증이 뒤집은 건(cleared)까지 세므로
+      // 오탐이 많으면 큰 숫자가 그대로 위험으로 읽힌다. 화면이 cleared를 forward로
+      // 합친 것과도 어긋난다.
       key: 'blockRate',
       label: '차단률',
       tone: '',
       value: formatPercent(summary.blockRate),
-      sub: `이상 판정률 ${formatPercent(summary.anomalyRate)}`,
       // 평균과 p95를 나란히 둔다. 평균만 보면 꼬리 지연이 가려진다. (명세 1-4)
       //
       // 두 값은 구간에 표본이 없으면 null이다. 트래픽이 잠깐만 끊겨도 그렇게 되므로
       // fixed()로 받아 대시로 떨어뜨린다. 0ms로 대체하지 않는다 — "측정 안 됨"과
       // "0ms"는 다르고, 0으로 보이면 탐지가 공짜인 것처럼 읽힌다.
-      sub2:
-        `지연 평균 ${fixed(summary.avgDetectionLatencyMs, 2) ?? '—'}ms, ` +
-        `p95 ${fixed(summary.p95DetectionLatencyMs, 2) ?? '—'}ms`,
+      sub: `지연 평균 ${fixed(summary.avgDetectionLatencyMs, 2) ?? '—'}ms`,
+      sub2: `p95 ${fixed(summary.p95DetectionLatencyMs, 2) ?? '—'}ms`,
     },
   ]
 }
@@ -108,7 +100,7 @@ export function SummaryCards({ summary }: { summary: SummaryResponse | null }) {
   if (!summary) {
     return (
       <div className="cards">
-        {Array.from({ length: 6 }, (_unused, index) => (
+        {Array.from({ length: 5 }, (_unused, index) => (
           <div className="card" key={index}>
             <div className="k">—</div>
             <div className="n">—</div>

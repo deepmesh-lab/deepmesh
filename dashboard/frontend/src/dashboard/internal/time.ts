@@ -62,6 +62,7 @@ export function nowKstIso(): IsoDateTime {
 const TIME_RANGE_MS: Record<string, number> = {
   '1m': 60_000,
   '5m': 5 * 60_000,
+  '10m': 10 * 60_000,
   '15m': 15 * 60_000,
   '30m': 30 * 60_000,
   '1h': 60 * 60_000,

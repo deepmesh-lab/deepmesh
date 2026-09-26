@@ -25,6 +25,8 @@ public record EventResponse(
 		String peerServiceName,
 		String modelVerdict,
 		Double ocsvmScore,
+		/** 판정 기준 점수. ocsvmScore가 이보다 작으면 ATTACK이다. 추가 이전 행은 null. */
+		Double threshold,
 		String verdict,
 		String category,
 		String verificationStage,
@@ -53,12 +55,23 @@ public record EventResponse(
 	 * 같은 PeerIndex로 여기서 되돌린다 — 안 하면 화면에 "알 수 없음"으로 뜬다.
 	 */
 	public static EventResponse from(DetectionEvent e, String peerServiceName) {
+		return from(e, e.getServiceName(), peerServiceName);
+	}
+
+	/**
+	 * serviceName·peerServiceName을 모두 밖에서 넣는다.
+	 *
+	 * <p>목적지 역매핑뿐 아니라 traffic-gen 같은 external 별칭 접기까지 조회 시점에 적용하려면
+	 * 관측 주체 이름도 바꿔 끼울 수 있어야 한다({@code PeerNaming}). 나머지 필드는 저장된
+	 * 값을 그대로 쓴다.
+	 */
+	public static EventResponse from(DetectionEvent e, String serviceName, String peerServiceName) {
 		return new EventResponse(
-				String.valueOf(e.getEventId()), e.getOccurredAt(), e.getServiceName(),
+				String.valueOf(e.getEventId()), e.getOccurredAt(), serviceName,
 				e.getPodName(), e.getNamespace(), e.getNodeName(), e.getDirection(),
 				e.getSessionId(), e.getSrcIp(), e.getSrcPort(), e.getDstIp(), e.getDstPort(),
 				e.getProtocol(), peerServiceName, e.getModelVerdict(), e.getOcsvmScore(),
-				e.getVerdict(), e.getCategory(), e.getVerificationStage(),
+				e.getThreshold(), e.getVerdict(), e.getCategory(), e.getVerificationStage(),
 				e.getVerificationPassed(), e.getDetectionLatencyMs(), e.getSummary(),
 				e.getSignature());
 	}

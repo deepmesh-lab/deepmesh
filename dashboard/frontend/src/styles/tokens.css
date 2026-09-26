@@ -131,6 +131,10 @@
   --verdict-cleared: var(--color-info);
   --verdict-cleared-weak: var(--color-info-weak);
 
+  /* 화면 표기용 FORWARD = benign + cleared. 전달된 트래픽이라 정상 계열 색을 쓴다 */
+  --verdict-forward: var(--color-success);
+  --verdict-forward-weak: var(--color-success-weak);
+
   --verdict-drop: var(--color-danger);
   --verdict-drop-weak: var(--color-danger-weak);
   --verdict-drop-border: var(--color-danger-border);

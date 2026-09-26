@@ -68,9 +68,9 @@ export function useDashboard(): DashboardContextValue {
  * REST를 먼저 내보내고 그다음 EventSource를 연다.
  */
 export function DashboardProvider({ children }: { children: ReactNode }) {
-  // 기본을 1시간으로 둔다. 5분은 판정이 한두 건만 들어와도 비율이 크게 튀고,
-  // 만들어진 판정 간선도 금방 창 밖으로 밀려나 사라진다.
-  const [timeRange, setTimeRange] = useState<TopologyTimeRange>('1h')
+  // 기본은 5분이다. 시연에서 방금 일으킨 공격이 긴 구간의 누적에 묻히지 않게 한다.
+  // 대신 판정 한두 건에도 비율이 크게 튀고, 판정 간선은 5분 뒤 창 밖으로 밀려난다.
+  const [timeRange, setTimeRange] = useState<TopologyTimeRange>('5m')
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null)
 

@@ -145,7 +145,7 @@ export function ServiceDetailDialog({
                         ['modelId', pod.modelId],
                         [
                           'counts',
-                          `benign ${pod.counts.benign}, cleared ${pod.counts.cleared}, ` +
+                          `forward ${pod.counts.benign + pod.counts.cleared}, ` +
                             `drop ${pod.counts.drop}, relay ${pod.counts.relay}`,
                         ],
                         ['status', pod.status],

@@ -26,6 +26,7 @@ const CONNECTION_LABEL: Record<ConnectionState, string> = {
 const TIME_RANGE_LABEL: Record<TimeRange, string> = {
   '1m': '최근 1분',
   '5m': '최근 5분',
+  '10m': '최근 10분',
   '15m': '최근 15분',
   '30m': '최근 30분',
   '1h': '최근 1시간',

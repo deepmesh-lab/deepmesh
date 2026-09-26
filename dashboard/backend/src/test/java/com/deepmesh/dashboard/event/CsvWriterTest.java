@@ -35,7 +35,7 @@ class CsvWriterTest {
 	void 헤더는_여덟_열이고_service와_peer가_나뉘어_있다() {
 		assertThat(CsvWriter.headerLine()).isEqualTo(
 				"occurredAt,verdict,serviceName,peerServiceName,podName,direction,"
-						+ "ocsvmScore,detectionLatencyMs\r\n");
+						+ "ocsvmScore,threshold,detectionLatencyMs\r\n");
 	}
 
 	@Test

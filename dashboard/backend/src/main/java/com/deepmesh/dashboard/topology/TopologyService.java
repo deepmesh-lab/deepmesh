@@ -58,12 +58,36 @@ public class TopologyService {
 	private final String defaultNamespace;
 
 	/**
-	 * 토폴로지에서 뺄 워크로드.
+	 * 토폴로지에서 완전히 뺄 워크로드 (노드도 엣지도 안 그린다).
 	 *
 	 * <p>대시보드 자신은 관측 대상 메시의 일부가 아니다. 사이드카가 없어 항상
 	 * UNMONITORED로 뜨고, 프론트의 고정 격자에도 자리가 없어 화면 아래에 쌓인다.
 	 */
 	private final Set<String> excludedNodes;
+
+	/**
+	 * 자기 노드로는 안 그리되, 이 노드로 오간 트래픽은 <b>external</b>로 접는 워크로드
+	 * (traffic-gen 등). 규칙은 탐지 이벤트·로그와 공유한다 — {@link ExternalAliases}.
+	 */
+	private final ExternalAliases externalAliases;
+
+	/**
+	 * 표시용 합성 엣지 (source→target 목록). 관측 데이터에 없는 <b>구조적 의존 경로</b>를
+	 * 그래프에 드러낸다.
+	 *
+	 * <ul>
+	 *   <li>서비스→mysql: auth·post·comment 모두 MySQL을 쓰지만(application.yml의 jdbc:mysql),
+	 *       MySQL 바이너리 프로토콜이 HTTP 파서를 깨서 iptables가 3306을 프록시 예외로 둔다
+	 *       (servicemesh/data-plane/iptables.sh) — 실재하지만 미관측.
+	 *   <li>frontend→서비스: nginx가 /api/**를 각 서비스로 프록시하도록 라우트가 정의돼 있다
+	 *       (nginx.conf). 부하 생성기는 서비스를 직접 호출해 이 경로로 트래픽을 흘리지 않지만,
+	 *       <b>설정에 존재하는 구조적 경로</b>이므로 간선으로 나타낸다.
+	 * </ul>
+	 *
+	 * <p>굵기는 source 서비스의 forward(benign+cleared) 볼륨을 따라 움직인다. 노드 counts·탐지·
+	 * 통계에는 전혀 반영하지 않으며, 실제 트래픽이 아니라 표시용이라 drop/relay가 붙지 않는다.
+	 */
+	private final List<String[]> displayEdges;
 
 	private final ClusterTopologySource cluster;
 	private final DetectionEventRepository eventRepository;
@@ -73,7 +97,11 @@ public class TopologyService {
 
 	public TopologyService(
 			@Value("${deepmesh.namespace:deepmesh}") String defaultNamespace,
-			@Value("${deepmesh.topology.exclude:dashboard-backend,dashboard-frontend,traffic-gen}") String[] excluded,
+			@Value("${deepmesh.topology.exclude:dashboard-backend,dashboard-frontend}") String[] excluded,
+			@Value("${deepmesh.topology.display-edges:"
+					+ "auth->mysql,post->mysql,comment->mysql,"
+					+ "frontend->auth,frontend->post,frontend->comment}") String[] displayEdges,
+			ExternalAliases externalAliases,
 			ClusterTopologySource cluster,
 			DetectionEventRepository eventRepository,
 			StatsBucketRepository statsRepository,
@@ -81,6 +109,8 @@ public class TopologyService {
 			Clock clock) {
 		this.defaultNamespace = defaultNamespace;
 		this.excludedNodes = Set.of(excluded);
+		this.displayEdges = parseEdges(displayEdges);
+		this.externalAliases = externalAliases;
 		this.cluster = cluster;
 		this.eventRepository = eventRepository;
 		this.statsRepository = statsRepository;
@@ -98,12 +128,14 @@ public class TopologyService {
 		PeerIndex peers = cluster.peerIndex(ns);
 
 		Map<String, VerdictCounts> byService = countsByService(range);
-		List<EdgeResponse> edges = buildEdges(range, peers);
+		List<EdgeResponse> edges = withDisplayEdges(buildEdges(range, peers), byService);
 
 		List<NodeResponse> nodes = new ArrayList<>();
 		Set<String> known = new HashSet<>();
 		for (ServiceWorkload workload : workloads) {
-			if (excludedNodes.contains(workload.serviceName())) {
+			// 완전 제외 노드와 external로 접는 노드(traffic-gen)는 자기 상자로 그리지 않는다.
+			if (excludedNodes.contains(workload.serviceName())
+					|| externalAliases.contains(workload.serviceName())) {
 				continue;
 			}
 			known.add(workload.serviceName());
@@ -217,22 +249,86 @@ public class TopologyService {
 		// 단위라 여기에 더하면 단위가 섞인다 — addEvent는 benign을 세지 않는다.
 		for (PeerBenignBucket bucket : peerRepository
 				.findByWindowToGreaterThanEqualAndWindowToLessThan(range.from(), range.to())) {
-			String target = PeerBenignBucket.OTHER_DST_IP.equals(bucket.getDstIp())
+			String source = mapEndpoint(NodeIds.of(bucket.getServiceName()));
+			String rawTarget = PeerBenignBucket.OTHER_DST_IP.equals(bucket.getDstIp())
 					? PeerIndex.EXTERNAL_NODE
 					: peers.resolve(bucket.getDstIp(), null);
-			accumulator(byId, NodeIds.of(bucket.getServiceName()), target).addBenign(bucket.getBenign());
+			String target = mapEndpoint(rawTarget);
+			if (source == null || target == null || source.equals(target)) {
+				continue;
+			}
+			accumulator(byId, source, target).addBenign(bucket.getBenign());
 		}
 
 		// cleared/drop/relay — 이벤트가 dstIp를 갖고 온다
 		for (DetectionEvent event : eventRepository
 				.findByOccurredAtGreaterThanEqualAndOccurredAtLessThan(range.from(), range.to())) {
-			String target = peers.resolve(event.getDstIp(), event.getDstPort());
-			accumulator(byId, NodeIds.of(event.getServiceName()), target).addEvent(event);
+			String source = mapEndpoint(NodeIds.of(event.getServiceName()));
+			String target = mapEndpoint(peers.resolve(event.getDstIp(), event.getDstPort()));
+			if (source == null || target == null || source.equals(target)) {
+				continue;
+			}
+			accumulator(byId, source, target).addEvent(event);
 		}
 
 		List<EdgeAccumulator> sorted = new ArrayList<>(byId.values());
 		sorted.sort(Comparator.comparingLong((EdgeAccumulator a) -> a.counts.total()).reversed());
 		return fold(sorted);
+	}
+
+	/**
+	 * 관측 엣지 위에 표시용 합성 엣지(서비스→mysql, frontend→서비스)를 얹는다.
+	 *
+	 * <p>관측 데이터에 없는 구조적 의존 경로다({@link #displayEdges} 참고). 굵기는 source
+	 * 서비스의 forward(benign+cleared) 볼륨을 그대로 써서, 부하가 있을 때만 초록 forward로
+	 * 흐르게 한다. 부하가 없는 서비스엔 죽은 선을 남기지 않는다.
+	 */
+	private List<EdgeResponse> withDisplayEdges(
+			List<EdgeResponse> edges, Map<String, VerdictCounts> byService) {
+		if (displayEdges.isEmpty()) {
+			return edges;
+		}
+		Set<String> present = new HashSet<>();
+		for (EdgeResponse e : edges) {
+			present.add(e.source() + "->" + e.target());
+		}
+		List<EdgeResponse> out = new ArrayList<>(edges);
+		for (String[] pair : displayEdges) {
+			String source = pair[0];
+			String target = pair[1];
+			// 같은 경로가 실제로 관측됐다면(포트 예외가 풀린 경우 등) 그 엣지를 그대로 둔다.
+			if (present.contains(source + "->" + target)) {
+				continue;
+			}
+			// forward(benign+cleared) 볼륨을 굵기로 쓴다. auth처럼 들어온 요청에 응답만 하는
+			// 서비스는 그 트래픽이 대부분 cleared(모델 ATTACK→검증 통과)로 잡혀 benign만 보면
+			// 0이다 — benign 기준이면 auth→mysql이 아예 안 생긴다.
+			VerdictCounts svc = byService.get(source);
+			long forward = svc == null ? 0 : svc.benign() + svc.cleared();
+			if (forward <= 0) {
+				continue;
+			}
+			VerdictCounts counts = new VerdictCounts(forward, 0, 0, 0);
+			out.add(new EdgeResponse(source + "->" + target, source, target, "TCP",
+					counts.total(), CountsResponse.of(counts), "FORWARD", null, 0));
+		}
+		return out;
+	}
+
+	private static List<String[]> parseEdges(String[] specs) {
+		List<String[]> out = new ArrayList<>();
+		for (String spec : specs) {
+			int arrow = spec == null ? -1 : spec.indexOf("->");
+			if (arrow < 0) {
+				continue;
+			}
+			String source = spec.substring(0, arrow).trim();
+			String target = spec.substring(arrow + 2).trim();
+			if (!source.isEmpty() && !target.isEmpty()) {
+				out.add(new String[] {source, target});
+			}
+		}
+		return out;
 	}
 
 	/** 상위 MAX_EDGES만 남기고 나머지는 source별 EXTERNAL 엣지 하나로 접는다. */
@@ -253,6 +349,26 @@ public class TopologyService {
 			out.add(bucket.toResponse(bucket.absorbed));
 		}
 		return out;
+	}
+
+	/**
+	 * 엣지 엔드포인트를 화면 표기로 바꾼다.
+	 *
+	 * <ul>
+	 *   <li>완전 제외 노드(dashboard-*)면 {@code null} — 그 엣지는 세지 않는다.
+	 *   <li>external 별칭(traffic-gen)이면 {@code external}로 접는다 — 상자 대신 외부 트래픽으로 보인다.
+	 *   <li>그 외에는 그대로 둔다.
+	 * </ul>
+	 *
+	 * <p>제외/별칭은 원래 워크로드 노드 조립에만 적용됐다. 그런데 traffic-gen처럼 사이드카가
+	 * 없는 트래픽 출처는 서비스가 그리로 보낸 <b>응답</b>의 목적지로 잡혀 엣지 target이 되고,
+	 * 그 엣지가 남으면 target을 합성 노드로 다시 그려(:128) 화면에 상자가 나타났다.
+	 */
+	private String mapEndpoint(String node) {
+		if (excludedNodes.contains(node)) {
+			return null;
+		}
+		return externalAliases.fold(node);
 	}
 
 	private EdgeAccumulator accumulator(Map<String, EdgeAccumulator> byId, String source, String target) {

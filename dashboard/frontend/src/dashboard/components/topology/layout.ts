@@ -1,9 +1,10 @@
-import type { TopologyEdge, TopologyNode } from '../../internal/types'
+import type { NodeKind, TopologyEdge, TopologyNode } from '../../internal/types'
 
 /** Pod 하나가 차지하는 자리 */
-export const POD_WIDTH = 96
-export const POD_HEIGHT = 42
-export const POD_ROW_HEIGHT = 50
+/** 알약 모양이라 높이가 낮고 가로가 조금 넓다. 서비스 상자(120) 안에 좌우 여백이 남는다. */
+export const POD_WIDTH = 100
+export const POD_HEIGHT = 34
+export const POD_ROW_HEIGHT = 44
 
 /** 프록시가 붙은 서비스 상자 */
 export const GROUP_WIDTH = 120
@@ -14,16 +15,57 @@ export const GROUP_PADDING = 10
 export const PLAIN_WIDTH = 104
 export const PLAIN_HEIGHT = 92
 
-/** Control Plane 상자 — 서비스와 같은 구조(머리 + 구성요소 두 줄) */
-export const CONTROL_PLANE_WIDTH = 168
-/** 구성요소는 Pod가 아니라 사각형 블록 — 라벨이 길어 Pod보다 넓다 */
-export const COMPONENT_WIDTH = 148
-export const COMPONENT_HEIGHT = 34
+/** 클러스터 외부 — 알약 모양. 서비스 상자와 한눈에 갈리도록 가로로 눕힌다. */
+export const EXTERNAL_WIDTH = 132
+export const EXTERNAL_HEIGHT = 58
+
+/** Master Node 상자 — 서비스와 같은 구조(머리 + 구성요소 세 줄) */
+export const CONTROL_PLANE_WIDTH = 210
+/**
+ * 구성요소는 Pod가 아니라 사각형 블록 — 라벨이 길어 Pod보다 넓다.
+ * 시연 화면에서 모듈 이름과 API 아이콘이 읽히도록 Pod 줄보다 크게 잡는다.
+ */
+export const COMPONENT_WIDTH = 188
+export const COMPONENT_HEIGHT = 46
+/** 구성요소 한 줄의 높이. Pod 줄(POD_ROW_HEIGHT)과 따로 둔다 — 블록이 Pod보다 크다. */
+export const COMPONENT_ROW_HEIGHT = 58
 export const CONTROL_PLANE_ID = 'control-plane'
-export const CONTROL_PLANE_PARTS = [
-  { id: 'verifier', label: 'Request Verifier' },
-  { id: 'provider', label: 'Pod Info Provider' },
+export const K8S_API_ID = 'kubernetes'
+
+/**
+ * Master Node 안의 구성요소. 위에서부터 이 순서로 쌓는다.
+ *
+ * kube-apiserver와 우리 Control Plane(Request Verifier·Pod Info Provider)은 모두
+ * master 호스트에서 돈다. 따로 떨어진 상자로 그리면 그 사실이 화면에서 사라진다.
+ *
+ * `flowId`가 React Flow 노드 id다. API Server는 백엔드 노드 id(`kubernetes`)를 **그대로**
+ * 쓴다 — 간선의 target이 그 id라, 바꾸면 `post → kubernetes` 같은 간선이 붙을 곳을 잃는다.
+ */
+export const CONTROL_PLANE_PARTS: {
+  id: string
+  label: string
+  flowId: string
+  icon?: NodeKind
+}[] = [
+  { id: K8S_API_ID, label: 'Kubernetes API Server', flowId: K8S_API_ID, icon: 'K8S_API' },
+  { id: 'verifier', label: 'Request Verifier', flowId: `${CONTROL_PLANE_ID}/verifier` },
+  { id: 'provider', label: 'Pod Info Provider', flowId: `${CONTROL_PLANE_ID}/provider` },
 ]
+
+/**
+ * 사이드카가 없는 **클러스터 내 워크로드**(mysql 등)인가.
+ *
+ * 이런 노드는 감시하지 않을 뿐 Pod로 이루어진 서비스라, 서비스와 같은 상자에 Pod 원을
+ * 그리고 색만 무채색으로 둔다. API Server·외부·Master Node는 워크로드가 아니다.
+ */
+export function isUnmonitoredWorkload(node: TopologyNode): boolean {
+  return (
+    !node.proxyEnabled &&
+    node.kind !== 'K8S_API' &&
+    node.kind !== 'EXTERNAL' &&
+    node.kind !== 'CONTROL_PLANE'
+  )
+}
 
 /**
  * 「최적 배치」가 쓰는 고정 격자. 값은 `[행, 열]`이다.
@@ -31,31 +73,38 @@ export const CONTROL_PLANE_PARTS = [
  * 자동 배치(dagre)는 간선이 늘 때마다 자리가 바뀌어 선이 꼬였다.
  * 구성이 고정된 토폴로지라 자리를 직접 정하는 편이 훨씬 읽기 좋다.
  *
- *   행\열      0               1          2         3          4
- *     0    control-plane    frontend    post      mysql
- *     1    external            ·         ·        auth     kubernetes
- *     2        ·            comment      ·          ·
+ *   행\열     0          1        2       3         4          5
+ *     0       ·          ·        ·      post      mysql
+ *     1    external   frontend    ·       ·        auth     Master Node
+ *     2       ·          ·        ·     comment
  *
  * **빈 칸은 남는 자리가 아니라 통로다.** 간선은 두 상자를 잇는 직선이라, 중간에 노드가
- * 있으면 그대로 관통한다. 시연 시나리오에서 긴 간선은 둘뿐이고 각각 통로를 지난다.
+ * 있으면 그대로 관통한다. 열 2를 통째로 비워 frontend와 백엔드 사이에 간격을 두고,
+ * 열 3의 행 1을 비워 comment→post 수직선이 통과할 통로로 쓴다.
  *
- *   external → auth      행 1을 직진 — (1,1)·(1,2)를 비워 둔 이유
- *   post → comment       좌하 대각선 — 같은 두 칸을 지난다
+ * 아래 다섯 간선이 **수직·수평**으로 곧게 떨어지도록 자리를 맞췄다 (나머지는 대각선):
  *
- * 나머지(external→frontend, frontend→post, post→mysql, post→auth, comment→auth,
- * auth→kubernetes)는 인접하거나 짧은 대각선이라 걸리는 것이 없다.
+ *   external ↔ frontend    행 1 인접 — 수평
+ *   frontend → auth        행 1 직진 — 수평 (열 2·3을 비워 둔 통로)
+ *   post → mysql           행 0 인접 — 수평
+ *   comment → post         열 3 수직 — 사이(행 1)를 비워 곧게 잇는다
+ *   auth → mysql           열 4 수직 — 표시용(3306 미관측)
+ *   auth → API Server      바로 옆 칸 — 시나리오 1(k1)
+ *   frontend → post·comment  대각선 (불가피)
  *
- * 노드를 새로 배치할 때는 **가장 긴 간선의 경로부터 비우고** 나머지를 채우는 편이 낫다.
+ * Master Node는 auth보다 높다. 같은 행에서 가운데 정렬하면 윗변이 어긋나므로, 배치 후
+ * auth의 윗변(y)에 맞춰 내린다(layoutTopology 끝부분).
+ *
+ * kubernetes는 격자에 없다. Master Node 상자 안의 블록으로 들어간다.
  */
 const GRID: Record<string, [number, number]> = {
-  'control-plane': [0, 0],
-  frontend: [0, 1],
-  post: [0, 2],
-  mysql: [0, 3],
+  post: [0, 3],
+  mysql: [0, 4],
   external: [1, 0],
-  auth: [1, 3],
-  kubernetes: [1, 4],
-  comment: [2, 1],
+  frontend: [1, 1],
+  auth: [1, 4],
+  'control-plane': [1, 5],
+  comment: [2, 3],
 }
 
 const COLUMN_GAP = 130
@@ -72,14 +121,20 @@ export function nodeSize(
   node: TopologyNode,
   podCount: number,
 ): { width: number; height: number } {
-  if (node.proxyEnabled) {
+  if (node.proxyEnabled || isUnmonitoredWorkload(node)) {
     return { width: GROUP_WIDTH, height: groupHeight(podCount) }
   }
   if (node.kind === 'CONTROL_PLANE') {
     return {
       width: CONTROL_PLANE_WIDTH,
-      height: groupHeight(CONTROL_PLANE_PARTS.length),
+      height:
+        GROUP_HEAD_HEIGHT +
+        CONTROL_PLANE_PARTS.length * COMPONENT_ROW_HEIGHT +
+        GROUP_PADDING,
     }
+  }
+  if (node.kind === 'EXTERNAL') {
+    return { width: EXTERNAL_WIDTH, height: EXTERNAL_HEIGHT }
   }
   return { width: PLAIN_WIDTH, height: PLAIN_HEIGHT }
 }
@@ -143,6 +198,14 @@ export function layoutTopology(
       ...size,
     }
   })
+
+  // Master Node는 auth보다 훨씬 높다. 같은 행에서 가운데 정렬하면 두 상자의 윗변이
+  // 어긋난다 — auth의 윗변(y)에 맞춰 내려, 머리 줄이 나란히 보이게 한다.
+  const master = placements[CONTROL_PLANE_ID]
+  const auth = placements.auth
+  if (master && auth) {
+    master.y = auth.y
+  }
 
   return placements
 }

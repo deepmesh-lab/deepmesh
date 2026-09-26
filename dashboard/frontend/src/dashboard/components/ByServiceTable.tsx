@@ -1,5 +1,6 @@
 import { verdictColor, verdictTextColor } from '../internal/theme'
-import { VERDICT_CATEGORIES, type ByServiceResponse } from '../internal/types'
+import type { ByServiceResponse } from '../internal/types'
+import { DISPLAY_CATEGORIES, displayCountOf } from '../internal/verdict'
 
 type Props = {
   data: ByServiceResponse | null
@@ -22,7 +23,7 @@ export function ByServiceTable({ data, onSelect }: Props) {
         <tr>
           <th>서비스</th>
           <th>전체</th>
-          <th>교차 검증 통과</th>
+          <th>전달</th>
           <th>차단</th>
           <th>응답 대체</th>
         </tr>
@@ -30,6 +31,7 @@ export function ByServiceTable({ data, onSelect }: Props) {
       <tbody>
         {data.rows.map((row) => {
           const total = Math.max(row.total, 1)
+          const forward = displayCountOf(row, 'forward')
           return (
             <tr
               key={row.serviceName}
@@ -39,25 +41,26 @@ export function ByServiceTable({ data, onSelect }: Props) {
               <td>
                 {row.serviceName}
                 <div className="sbar">
-                  {VERDICT_CATEGORIES.map((category) =>
-                    row[category] ? (
+                  {DISPLAY_CATEGORIES.map((display) => {
+                    const count = displayCountOf(row, display)
+                    return count ? (
                       <i
-                        key={category}
+                        key={display}
                         style={{
-                          width: `${(row[category] / total) * 100}%`,
-                          background: verdictColor(category),
+                          width: `${(count / total) * 100}%`,
+                          background: verdictColor(display),
                         }}
                       />
-                    ) : null,
-                  )}
+                    ) : null
+                  })}
                 </div>
               </td>
               <td>{row.total.toLocaleString()}</td>
               <td
-                className={row.cleared ? '' : 'mute'}
-                style={row.cleared ? { color: verdictColor('cleared') } : undefined}
+                className={forward ? '' : 'mute'}
+                style={forward ? { color: verdictColor('forward') } : undefined}
               >
-                {row.cleared}
+                {forward.toLocaleString()}
               </td>
               <td
                 className={row.drop ? '' : 'mute'}

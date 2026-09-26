@@ -152,7 +152,13 @@ class ModelDetector:
 
     def classify(self, session_id, image):
         verdict = self._detector.detect(session_id, image)
-        return Detection(is_malicious=not verdict.is_benign, score=float(verdict.score))
+        # 기준 점수도 함께 넘긴다. 대시보드가 "점수가 기준에서 얼마나 떨어졌나"를 보여준다.
+        threshold = getattr(verdict, "threshold", None)
+        return Detection(
+            is_malicious=not verdict.is_benign,
+            score=float(verdict.score),
+            threshold=None if threshold is None else float(threshold),
+        )
 
 
 def build_converter():

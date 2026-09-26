@@ -23,7 +23,7 @@ public final class CsvWriter {
 	 */
 	private static final List<String> HEADERS = List.of(
 			"occurredAt", "verdict", "serviceName", "peerServiceName",
-			"podName", "direction", "ocsvmScore", "detectionLatencyMs");
+			"podName", "direction", "ocsvmScore", "threshold", "detectionLatencyMs");
 
 	private CsvWriter() {
 	}
