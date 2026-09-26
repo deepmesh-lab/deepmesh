@@ -2,7 +2,7 @@
 # DeepMesh 시연 스크립트 — 배경 트래픽 / k1(drop) / r1(relay)
 #
 # k8s-master에서 실행한다. 저장소를 pull 한 뒤:
-#     bash scripts/demo.sh <명령>
+#     bash demo/demo_run.sh <명령>
 #
 # 명령:
 #   live    배경 정상 트래픽 시작 (traffic-gen replicas=1)
@@ -166,7 +166,7 @@ case "${1:-}" in
   pods)  cmd_pods ;;
   dash)  cmd_dash ;;
   *)
-    echo "사용법: bash scripts/demo.sh {live|quiet|k1|r1|clean|pods|dash}"
+    echo "사용법: bash demo/demo_run.sh {live|quiet|k1|r1|clean|pods|dash}"
     exit 1
     ;;
 esac
