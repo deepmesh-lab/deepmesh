@@ -388,59 +388,16 @@ OCSVM이 계산한 결과로 정해집니다.
 
 #### 4.4. 산업체 멘토링 의견 및 반영 사항
 
-산업체 멘토링으로 중간보고서에 대한 서면 자문을 받았습니다. 기술 구현도와 사업화 가능 여부를
-함께 짚어 주셨습니다.
-
-**자문 결론**
+산업체 멘토링으로 중간보고서에 대한 서면 자문을 받았습니다.
 
 > 인라인 이상탐지 구조와 AI 경량화 설계가 뛰어남. 다양한 공격 시나리오에 대한 모델 검증 및 보강을
 > 통해 실연동을 성공적으로 구현하기를 기대함
 
-**의견 1. 정상 트래픽과 유사한 난이도 높은 공격 시나리오를 추가할 것**
-
-중간보고서 시점의 탐지 대상은 쿠버네티스 API로 나가는 k1, k2가 중심이었습니다. 이 공격은 목적지와
-프로토콜만으로도 정상과 구분되므로, 그 결과만으로는 모델이 정말 변별력이 있는지 알 수 없다는
-지적이었습니다.
-
-반영: 정상 트래픽과 **프로토콜과 엔드포인트가 같은** 애플리케이션 계층 공격 다섯 종을 새로
-설계하고 수집했습니다. l2(위조 토큰 검증 반복), l3(내부 존재 확인 후 삭제 연쇄), enum_seq(순차 ID
-열거), cred_enum(로그인 무차별 대입), scan_seq(민감 경로 탐색)입니다. 이 시나리오들은 개별 패킷
-형식만으로 구분되지 않으므로 연속된 패킷 5개를 함께 보도록 표현을 바꿨습니다. 그 결과 l3와
-enum_seq는 탐지에 성공했고, payload 내부만 다른 l2와 cred_enum은 탐지가 제한적이라는 **표현의
-한계까지 함께 규명**했습니다.
-
-**의견 2. 서비스 수가 증가함에 따른 자원 오버헤드 최적화 방안이 필요함**
-
-사이드카는 Pod마다 붙으므로 서비스가 늘면 탐지기도 그만큼 늘어납니다. 서비스 규모가 커졌을 때
-실행 자원과 학습 부담이 어떻게 증가하는지에 대한 대비가 필요하다는 지적이었습니다.
-
-반영: **지식 증류로 모델을 경량화**했습니다. 314.69K 파라미터의 Teacher를 그대로 배포하지 않고
-1.23K에서 12.64K의 Student로 증류해, Pod마다 탐지기가 붙어도 메모리 점유가 누적되지 않도록
-했습니다. 의미 기반 표현으로 세션 이미지를 400바이트까지 줄여 추론 입력도 함께 작아졌고, 사이드카
-이미지는 CPU 전용 PyTorch 휠로 빌드해 GPU 런타임을 제외했습니다. 그 결과 CPU만으로 이미지당
-0.36ms에서 1.13ms의 추론을 유지합니다.
-
-향후 계획: 실행 자원과 별개로 **서비스마다 모델을 새로 학습해야 하는 부담**이 남습니다. 현재는
-트래픽 수집, 이미지화, 증류, 재보정이 각각의 스크립트로 나뉘어 있어 사람이 단계를 이어 붙여야
-합니다. 아키텍처는 실험 단계에서 검증된 구조로 고정할 수 있으므로, 남은 과제는 정상 시나리오만
-정의하면 수집부터 재보정까지 한 번에 도는 **전체 파이프라인을 구축**하는 것입니다. 이것이 갖춰지면
-서비스가 추가될 때 드는 비용이 시나리오 정의 하나로 줄어듭니다.
-
-**의견 3. 차기 단계에 어떤 보완 모듈과 연계해 해결할지 확장성 측면을 추가할 것**
-
-이 시스템 하나로 모든 위협을 막을 수는 없으므로, 남는 공백을 무엇과 함께 메울지 제시하라는
-지적이었습니다.
-
-향후 계획: **기존 정적 방어와의 계층 구성**을 다음 단계로 잡았습니다. 1차 판정을 네트워크 정책이나
-RBAC 같은 규칙 기반 방어에 맡기고, 그 규칙으로 판단할 수 없어 통과된 트래픽에 대해서만 본
-서비스메시의 학습 기반 탐지를 적용하는 구조입니다. 규칙으로 걸러지는 공격에는 추론 비용을 쓰지
-않으므로 자원 측면에서 유리하고, 정적 정책이 놓치는 허용 경로 안의 이상 행위는 학습 기반 탐지가
-맡게 되어 두 방식이 서로의 사각지대를 메울 수 있습니다.
-
-교차 검증도 **ReplicaSet이 3개 이상일 때 다수결로 확장**할 수 있습니다. 현재는 replica 하나의
-응답과 단순 비교하므로 둘 중 어느 쪽이 오염되었는지 판별할 수 없지만, 셋 이상에서 다수결을 취하면
-정상 응답을 가려낼 수 있습니다. 다만 비교 대상이 늘어나는 만큼 네트워크 트래픽과 응답 지연이
-늘어나므로, 탐지 모델의 오탐률을 충분히 낮춘 뒤 예외적인 상황에만 적용하는 편이 적절합니다.
+| 멘토 의견 | 대응 |
+|---|---|
+| 정상 트래픽과 유사한 난이도 높은 공격 시나리오를 추가할 것 | **반영.** 정상과 프로토콜, 엔드포인트가 같은 l2, l3, enum_seq, cred_enum, scan_seq 다섯 종을 추가하고 연속된 패킷 5개를 함께 보도록 표현을 바꿨습니다. payload 내부만 다른 l2와 cred_enum에서 탐지가 제한적이라는 표현의 한계도 함께 규명했습니다 |
+| 서비스 수가 증가함에 따른 자원 오버헤드 최적화 방안이 필요함 | **반영.** 지식 증류로 Teacher 314.69K를 Student 1.23K에서 12.64K로 줄이고 CPU 전용 휠로 빌드해, GPU 없이 이미지당 0.36ms에서 1.13ms의 추론을 유지합니다.<br/>**향후.** 수집부터 재보정까지 흩어져 있는 스크립트를 하나의 파이프라인으로 묶으면, 서비스가 늘어날 때 드는 비용을 정상 시나리오 정의만으로 줄일 수 있습니다 |
+| 차기 단계에 어떤 보완 모듈과 연계해 해결할지 확장성 측면을 추가할 것 | **향후.** 네트워크 정책이나 RBAC가 1차로 거르고 그 규칙으로 판단할 수 없는 트래픽만 학습 기반 탐지로 넘기는 계층 구성, 그리고 ReplicaSet이 3개 이상일 때 응답 다수결로 교차 검증을 확장하는 방안을 다음 단계로 잡았습니다 |
 
 ### 5. 설치 및 실행 방법
 
@@ -487,7 +444,7 @@ python3 servicemesh/control-plane/control_plane.py
 
 | 대상 | 포트 |
 |---|---|
-| MSA 게시판 | 31403 (NodePort) |
+| MSA 게시판 | 30080 (NodePort) |
 | 모니터링 대시보드 | 30090 (NodePort) |
 | Control Plane API | 8080 (master 호스트) |
 
@@ -531,9 +488,9 @@ bash demo/demo_run.sh dash     # 대시보드 요약 출력
 
 | 팀원 | 이메일 | 역할 |
 |:---:|:---:|---|
-| <p align="center"><a href="https://github.com/mini-apple"><img src="docs/images/avatar-mini-apple.png" width="80" alt="신의철"/></a><br/><a href="https://github.com/mini-apple"><strong>신의철</strong></a></p> | suc2150@pusan.ac.kr | MSA ERD 작성과 endpoint 설계, Auth 서비스 개발, K8s 클러스터 구축, Control Plane(Request Verifier, Pod Info Provider) 개발, 대시보드 endpoint 설계와 프론트엔드 개발 |
-| <p align="center"><a href="https://github.com/Kimgooner"><img src="docs/images/avatar-Kimgooner.png" width="80" alt="정의진"/></a><br/><a href="https://github.com/Kimgooner"><strong>정의진</strong></a></p> | ppvws@pusan.ac.kr | MSA 게시판 프론트엔드 개발, K8s 배포 파일 작성, iptables와 Traffic Handler 개발, 대시보드 ERD 작성과 백엔드 개발, 전체 통합 배포와 end to end 테스트 |
-| <p align="center"><a href="https://github.com/nnhhlee"><img src="docs/images/avatar-nnhhlee.png" width="80" alt="이시하"/></a><br/><a href="https://github.com/nnhhlee"><strong>이시하</strong></a></p> | siiihhaaa@pusan.ac.kr | MSA Post와 Comment 개발, 트래픽 데이터 수집, Traffic Converter 제안과 구현, 공격 시나리오 추가, KD-CNN과 OCSVM 학습 및 스윕 테스트 |
+| <p align="center"><a href="https://github.com/mini-apple"><img src="docs/images/avatar-mini-apple.png" width="100" alt="신의철"/></a><br/><a href="https://github.com/mini-apple"><strong>신⁠의⁠철</strong></a></p> | suc2150@pusan.ac.kr | MSA ERD 작성과 endpoint 설계, Auth 서비스 개발, K8s 클러스터 구축, Control Plane 개발, 대시보드 endpoint 설계와 프론트엔드 개발 |
+| <p align="center"><a href="https://github.com/Kimgooner"><img src="docs/images/avatar-Kimgooner.png" width="100" alt="정의진"/></a><br/><a href="https://github.com/Kimgooner"><strong>정⁠의⁠진</strong></a></p> | ppvws@pusan.ac.kr | MSA 게시판 프론트엔드 개발, K8s 배포 파일 작성, iptables와 Traffic Handler 개발, 대시보드 ERD 작성과 백엔드 개발, 전체 통합 배포와 end to end 테스트 |
+| <p align="center"><a href="https://github.com/nnhhlee"><img src="docs/images/avatar-nnhhlee.png" width="100" alt="이시하"/></a><br/><a href="https://github.com/nnhhlee"><strong>이⁠시⁠하</strong></a></p> | siiihhaaa@pusan.ac.kr | MSA Post와 Comment 개발, 트래픽 데이터 수집, Traffic Converter 제안과 구현, 공격 시나리오 추가, KD-CNN과 OCSVM 학습 및 스윕 테스트 |
 
 지도교수: 최윤호
 
@@ -541,9 +498,9 @@ bash demo/demo_run.sh dash     # 대시보드 요약 출력
 
 | 팀원 | 참여 후기 |
 |:---:|---|
-| <p align="center"><a href="https://github.com/mini-apple"><img src="docs/images/avatar-mini-apple.png" width="80" alt="신의철"/></a><br/><a href="https://github.com/mini-apple"><strong>신의철</strong></a></p> | 테스트베드 구현부터 서비스메시, 대시보드까지 대규모 프로젝트 전반을 총괄하며 단계마다 정해진 일정에 맞춰 개발을 진척시키고 회의를 주도하는 Project Management를 경험했습니다. 그 과정에서 구현 자체보다도 설계 명세를 정확히 작성하고, 결과를 잘 정리해 문서화하는 것이 더 중요하다고 느꼈습니다. 무엇보다 팀원들의 뛰어난 역량과 책임감, 배려심 덕분에 졸업과제를 잘 마무리할 수 있었다고 생각합니다. |
-| <p align="center"><a href="https://github.com/Kimgooner"><img src="docs/images/avatar-Kimgooner.png" width="80" alt="정의진"/></a><br/><a href="https://github.com/Kimgooner"><strong>정의진</strong></a></p> | <!-- 작성 예정 --> |
-| <p align="center"><a href="https://github.com/nnhhlee"><img src="docs/images/avatar-nnhhlee.png" width="80" alt="이시하"/></a><br/><a href="https://github.com/nnhhlee"><strong>이시하</strong></a></p> | <!-- 작성 예정 --> |
+| <p align="center"><a href="https://github.com/mini-apple"><img src="docs/images/avatar-mini-apple.png" width="100" alt="신의철"/></a><br/><a href="https://github.com/mini-apple"><strong>신⁠의⁠철</strong></a></p> | 테스트베드 구현부터 서비스메시, 대시보드까지 대규모 프로젝트 전반을 총괄하며 단계마다 정해진 일정에 맞춰 개발을 진척시키고 회의를 주도하는 Project Management를 경험했습니다. 그 과정에서 구현 자체보다도 설계 명세를 정확히 작성하고, 결과를 잘 정리해 문서화하는 것이 더 중요하다고 느꼈습니다. 무엇보다 팀원들의 뛰어난 역량과 책임감, 배려심 덕분에 졸업과제를 잘 마무리할 수 있었다고 생각합니다. |
+| <p align="center"><a href="https://github.com/Kimgooner"><img src="docs/images/avatar-Kimgooner.png" width="100" alt="정의진"/></a><br/><a href="https://github.com/Kimgooner"><strong>정⁠의⁠진</strong></a></p> | <!-- 작성 예정 --> |
+| <p align="center"><a href="https://github.com/nnhhlee"><img src="docs/images/avatar-nnhhlee.png" width="100" alt="이시하"/></a><br/><a href="https://github.com/nnhhlee"><strong>이⁠시⁠하</strong></a></p> | <!-- 작성 예정 --> |
 
 ### 8. 참고 문헌 및 출처
 
