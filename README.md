@@ -499,7 +499,7 @@ bash demo/demo_run.sh dash     # 대시보드 요약 출력
 | 팀원 | 참여 후기 |
 |:---:|---|
 | <p align="center"><a href="https://github.com/mini-apple"><img src="docs/images/avatar-mini-apple.png" width="100" alt="신의철"/></a><br/><a href="https://github.com/mini-apple"><strong>신⁠의⁠철</strong></a></p> | 테스트베드 구현부터 서비스메시, 대시보드까지 대규모 프로젝트 전반을 총괄하며 단계마다 정해진 일정에 맞춰 개발을 진척시키고 회의를 주도하는 Project Management를 경험했습니다. 그 과정에서 구현 자체보다도 설계 명세를 정확히 작성하고, 결과를 잘 정리해 문서화하는 것이 더 중요하다고 느꼈습니다. 무엇보다 팀원들의 뛰어난 역량과 책임감, 배려심 덕분에 졸업과제를 잘 마무리할 수 있었다고 생각합니다. |
-| <p align="center"><a href="https://github.com/Kimgooner"><img src="docs/images/avatar-Kimgooner.png" width="100" alt="정의진"/></a><br/><a href="https://github.com/Kimgooner"><strong>정⁠의⁠진</strong></a></p> | <!-- 작성 예정 --> |
+| <p align="center"><a href="https://github.com/Kimgooner"><img src="docs/images/avatar-Kimgooner.png" width="100" alt="정의진"/></a><br/><a href="https://github.com/Kimgooner"><strong>정⁠의⁠진</strong></a></p> | MSA 게시판 프론트엔드와 Traffic Handler를 구현하고, 쿠버네티스 내부 설정과 대시보드 백엔드 개발, 전체 통합 배포를 담당했습니다. 여러 요소를 실제로 맞물려 동작시키는 통합과 배포 단계에서 예상보다 많은 문제를 마주쳤고, 이를 하나씩 해결하며 인프라와 배포에 대한 감각을 키울 수 있었습니다. 부족한 점도 많았지만 함께 고생한 팀원들 덕분에 끝까지 잘 마무리할 수 있었습니다. |
 | <p align="center"><a href="https://github.com/nnhhlee"><img src="docs/images/avatar-nnhhlee.png" width="100" alt="이시하"/></a><br/><a href="https://github.com/nnhhlee"><strong>이⁠시⁠하</strong></a></p> | <!-- 작성 예정 --> |
 
 ### 8. 참고 문헌 및 출처
