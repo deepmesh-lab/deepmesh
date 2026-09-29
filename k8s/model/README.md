@@ -41,7 +41,7 @@ echo '/srv/deepmesh/model 192.168.56.0/24(ro,sync,no_subtree_check)' | sudo tee 
 sudo exportfs -ra && sudo systemctl enable --now nfs-kernel-server
 ```
 
-노드 쪽 `nfs-common`은 `k8s-cluster/scripts/common.sh`의 [6/6] 단계가 설치한다.
+노드 쪽 `nfs-common`은 `infra/scripts/common.sh`의 [6/6] 단계가 설치한다.
 그게 빠지면 Pod이 볼륨을 붙이지 못하고 ContainerCreating에서 멈춘다.
 
 export를 `ro`로 둔 것은 사이드카가 읽기만 하기 때문이다. 모델 적재는 NFS가 아니라

@@ -1,0 +1,39 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+#
+# DeepMesh Kubernetes Cluster
+# 호스트: Dell T7610 (Ubuntu 24.04 + KVM/libvirt)
+
+NODES = [
+  { name: "k8s-master",  ip: "192.168.56.10", cpus: 4,  mem: 8192  },
+  { name: "k8s-worker1", ip: "192.168.56.11", cpus: 12, mem: 24576 },
+  { name: "k8s-worker2", ip: "192.168.56.12", cpus: 12, mem: 24576 },
+  { name: "k8s-worker3", ip: "192.168.56.13", cpus: 12, mem: 24576 },
+]
+
+Vagrant.configure("2") do |config|
+  config.vm.synced_folder ".", "/vagrant", type: "nfs", nfs_version: 3, nfs_udp: false
+  config.vm.box = "bento/ubuntu-24.04"
+  config.vm.box_check_update = false
+
+  config.vm.provision "shell", inline: <<-SHELL
+    grep -q "k8s-master" /etc/hosts || cat <<-EOF >> /etc/hosts
+192.168.56.10 k8s-master
+192.168.56.11 k8s-worker1
+192.168.56.12 k8s-worker2
+192.168.56.13 k8s-worker3
+EOF
+  SHELL
+
+  NODES.each do |node|
+    config.vm.define node[:name] do |vm|
+      vm.vm.hostname = node[:name]
+      vm.vm.network "private_network", ip: node[:ip]
+      vm.vm.provider :libvirt do |lv|
+        lv.cpus   = node[:cpus]
+        lv.memory = node[:mem]
+      end
+      vm.vm.provision "shell", path: "scripts/common.sh"
+    end
+  end
+end
