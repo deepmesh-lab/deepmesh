@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-nginx
+  namespace: deepmesh
+data:
+  # 이 파일이 컨테이너의 /etc/nginx/conf.d/default.conf를 덮어쓴다(이미지의
+  # msa/frontend/nginx.conf 자리). 주소를 바꿔야 하면 이미지를 다시 빌드하지 말고
+  # 이 값만 고친 뒤 kubectl rollout restart 하면 된다.
+  #
+  # 이미지 안의 것과 같은 내용을 유지한다. 어긋나면 로컬(docker-compose)과 클러스터가
+  # 다르게 동작해 추적하기 어려워진다.
+  default.conf: |
+    server {
+        listen 80;
+        server_name _;
+
+        root /usr/share/nginx/html;
+        index index.html;
+
+        # 파일 이름에 해시가 붙는 번들이라 오래 캐시해도 안전하다.
+        location /assets/ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+
+        # /api/**를 백엔드로 넘긴다.
+        #
+        # 이 블록들이 없으면 아래 SPA fallback이 API 요청까지 삼켜 GET에는 index.html을,
+        # POST에는 405를 돌려준다. 앱은 그 HTML을 응답 객체로 알고 .length를 부르다 죽고
+        # 화면이 통째로 빈다. 실제로 그렇게 깨져 있었다.
+        #
+        # 앱은 같은 오리진으로 요청한다 — docker-compose가 VITE_*_API_URL을 빈 문자열로
+        # 넘겨 빌드하기 때문이다. 그래서 백엔드에 CORS 설정이 필요 없다.
+        #
+        # 서비스 이름을 짧게 쓴다. docker-compose의 서비스 이름과 k8s Service 이름이 같아
+        # (auth-service·post-service·comment-service, 내부 포트 8080) 두 환경에서 그대로
+        # 동작한다. 다만 nginx는 이 이름을 **시작 시점에** 해석하므로, 백엔드가 아직 없으면
+        # 컨테이너가 뜨지 못하고 재시작을 반복한다. 셋이 함께 배포되는 구성이라 그대로 둔다.
+        location /api/auth/ {
+            proxy_pass http://auth-service:8080;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            # 같은 오리진 요청이라 CORS 검사가 필요 없다. Origin을 그대로 넘기면 Spring의
+            # CorsConfig 허용 목록(옛 NodePort 주소)에 걸려 403 Invalid CORS request가 난다.
+            proxy_set_header Origin "";
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location /api/posts {
+            proxy_pass http://post-service:8080;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            # 같은 오리진 요청이라 CORS 검사가 필요 없다. Origin을 그대로 넘기면 Spring의
+            # CorsConfig 허용 목록(옛 NodePort 주소)에 걸려 403 Invalid CORS request가 난다.
+            proxy_set_header Origin "";
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location /api/comments {
+            proxy_pass http://comment-service:8080;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            # 같은 오리진 요청이라 CORS 검사가 필요 없다. Origin을 그대로 넘기면 Spring의
+            # CorsConfig 허용 목록(옛 NodePort 주소)에 걸려 403 Invalid CORS request가 난다.
+            proxy_set_header Origin "";
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # SPA. /posts 같은 주소를 새로고침해도 라우터가 처리하도록 넘긴다.
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+    }
+
+    # kubelet readinessProbe 전용 포트.
+    #
+    # 서비스 포트(80)로 프로브를 받으면 iptables가 그 포트를 사이드카로 리다이렉트하므로,
+    # 10초마다 오는 프로브 응답이 탐지 대상이 된다. 대시보드에 사라지지 않는
+    # frontend→external 선으로 남는데, 그건 트래픽이 아니라 관측 장치다.
+    # 백엔드 3종이 actuator를 8081로 옮겨 푼 것과 같은 방법이다
+    # (k8s/*/deployment-with-sidecar.yaml의 MANAGEMENT_SERVER_PORT).
+    #
+    # iptables.sh는 TARGET_PORT(80)만 PREROUTING REDIRECT하므로 이 포트는 그대로 통과한다.
+    server {
+        listen 8081;
+        server_name _;
+
+        location /healthz {
+            access_log off;
+            return 200 "ok";
+        }
+    }

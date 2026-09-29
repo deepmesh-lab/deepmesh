@@ -1,0 +1,11 @@
+# 줄바꿈 고정.
+#
+# 셸 스크립트는 반드시 LF여야 한다. Windows 체크아웃에서 git이 CRLF로 바꾸면 그 파일이
+# 그대로 이미지에 들어가고, 컨테이너 안에서 `sh script.sh`가 첫 줄부터 `\r` 때문에
+# 깨진다. 실제로 iptables-init이 CrashLoopBackOff에 빠져 사이드카 배포가 통째로 멈췄다.
+# 리눅스에서 빌드하면 드러나지 않아 원인을 찾기 어렵다.
+*.sh text eol=lf
+
+# 컨테이너가 그대로 읽는 설정 파일도 같은 이유로 LF로 고정한다.
+Dockerfile text eol=lf
+*.conf text eol=lf

@@ -1,0 +1,48 @@
+{
+  "threshold_df": -13.960124303497354,
+  "target_fpr": 0.01,
+  "gamma": "scale",
+  "nu": 0.02,
+  "l2": false,
+  "arch": "2x8",
+  "teacher": "shallow",
+  "mask_transport": false,
+  "vec_len": 20,
+  "select": "robust_recalibration: max worst-per-scenario ROC-AUC; threshold=min FPR satisfying REQUIRED",
+  "calibration_fpr": 0.001471,
+  "calibration_target_fpr": 0.001,
+  "calibration_fpr_cap": 0.01,
+  "detect_scenarios": [
+    "k1",
+    "k2",
+    "l3"
+  ],
+  "required_scenarios": {
+    "l3": 0.95,
+    "d1": 0.8,
+    "k1": 0.95,
+    "k2": 0.95
+  },
+  "report_only_scenarios": [
+    "enum_seq",
+    "l2"
+  ],
+  "per_detect_auc": {
+    "k2": 1.0,
+    "k1": 1.0,
+    "l3": 0.999313
+  },
+  "worst_detect_auc": 0.999313,
+  "mean_detect_auc": 0.999771,
+  "calibration_recall": {
+    "enum_seq": 1.0,
+    "l2": 0.0,
+    "l3": 1.0,
+    "d1": 1.0,
+    "k1": 1.0,
+    "k2": 1.0
+  },
+  "enum_seq_policy": "report_only: ambiguous sequential normal-use pattern; excluded from OCSVM/threshold optimization",
+  "semantic": true,
+  "recalibrated": true
+}

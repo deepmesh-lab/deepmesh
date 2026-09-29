@@ -1,0 +1,66 @@
+# 대시보드 백엔드의 K8s 조회 권한.
+#
+# 토폴로지의 노드·Pod 정보는 전부 K8s API가 출처다(backend-frontend-api.md 1-2·1-3).
+# 백엔드가 Pod으로 뜨므로 ServiceAccount 토큰으로 인증하고, 아래 리소스만 읽는다.
+#
+# 읽기 전용이다. 대시보드는 클러스터 상태를 바꾸지 않는다 — GET 전용 API라는 명세의
+# 원칙이 권한 수준에서도 지켜져야 한다.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dashboard-backend-sa
+  namespace: deepmesh
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dashboard-backend
+  namespace: deepmesh
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dashboard-backend
+  namespace: deepmesh
+subjects:
+  - kind: ServiceAccount
+    name: dashboard-backend-sa
+    namespace: deepmesh
+roleRef:
+  kind: Role
+  name: dashboard-backend
+  apiGroup: rbac.authorization.k8s.io
+---
+# K8s API Server의 ClusterIP를 알아내려면 default 네임스페이스의 kubernetes 서비스를
+# 읽어야 한다. 엣지의 target을 kubernetes로 되돌리는 근거다(PeerIndex).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dashboard-backend-apiserver-lookup
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: ["services"]
+    resourceNames: ["kubernetes"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dashboard-backend-apiserver-lookup
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: dashboard-backend-sa
+    namespace: deepmesh
+roleRef:
+  kind: Role
+  name: dashboard-backend-apiserver-lookup
+  apiGroup: rbac.authorization.k8s.io

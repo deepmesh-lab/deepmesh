@@ -1,0 +1,207 @@
+# 상시 정상 트래픽 생성기의 시나리오 스크립트.
+#
+# Deployment의 args에 인라인하지 않고 ConfigMap으로 뺀 이유: 시나리오는 앞으로도 손볼
+# 물건이고, YAML 블록 스칼라 안에서는 셸 따옴표가 읽기 어려워진다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traffic-gen-script
+  namespace: deepmesh
+data:
+  gen.sh: |
+    #!/bin/sh
+    # MSA 공개 API 전체를 정상 사용자의 모양으로, 끊기지 않고 두드린다.
+    #
+    # 설계 원칙 넷:
+    #
+    #   1. 공개 API(/api/**)만 부른다. /internal/**은 서비스끼리 부르는 경로이고,
+    #      그 호출이 바로 사이드카가 판정하는 east-west egress다. 생성기가 직접 부르면
+    #      관측하려는 대상을 우리가 위조하는 셈이 된다.
+    #
+    #   2. 흐름이 끊기지 않아야 한다. 대시보드는 benign 엣지를 '트래픽 양에 비례하는
+    #      속도로 점멸하는 초록 선'으로 그리고(VerdictEdge), 집계 구간에 트래픽이 없으면
+    #      회색 점선(idle)으로 죽는다. 그래서 배경 흐름은 쉬지 않는다.
+    #
+    #   3. 그 점멸이 빨라지려면 양이 필요하다. 주기는 benign 900건에서 1.0초, 1260건
+    #      부근에서 최고 속도가 된다 — 5분 창 기준 초당 2~3건대다. 배경 흐름을 그
+    #      언저리로 맞춘다. 늘리는 것은 조회와 같은 글 수정뿐이라 DB는 커지지 않는다.
+    #
+    #   4. 그래도 열거처럼 보이면 안 된다. 모델은 속도가 아니라 행동 시퀀스(순서·경로
+    #      ·반복·표적)를 본다(common.sh). 배경 흐름도 간격과 대상을 매번 흔들고, 그 위에
+    #      사람 한 명의 '방문'(가입·로그인·글쓰기·댓글·삭제·로그아웃)을 주기적으로 얹어
+    #      공개 API 전체를 덮는다.
+    set -u
+
+    A=http://auth-service:8080
+    P=http://post-service:8080
+    C=http://comment-service:8080
+    F=http://frontend-service:80   # 서비스 이름은 frontend가 아니라 frontend-service다
+    JSON='Content-Type: application/json'
+    UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/128.0 Safari/537.36'
+    PW=pw12345678
+    USERS=/tmp/users
+    TOKEN=/tmp/token      # 배경 흐름이 공유하는 접근 토큰
+    ANCHOR=/tmp/anchor    # 배경 흐름이 계속 고쳐 쓰는 글. 행이 늘지 않는다
+
+    # ── 잡동사니 ────────────────────────────────────────────────────────────
+    rnd()     { echo $(( RANDOM % $1 )); }
+    between() { echo $(( $1 + RANDOM % ($2 - $1 + 1) )); }
+    nap()     { sleep "0.$(between $1 $2)"; }               # 0.x초
+    think()   { sleep $(between 1 4); }                     # 사람이 화면을 보는 시간
+    maybe()   { [ $(rnd 100) -lt $1 ]; }
+    jnum()    { sed -n "s/.*\"$1\":\([0-9][0-9]*\).*/\1/p"; }
+    tok()     { sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p'; }
+
+    hit()     { curl -s -o /dev/null -m 10 -A "$UA" -H 'Accept: application/json' "$@"; }
+    get()     { curl -s -m 10 -A "$UA" -H 'Accept: application/json' "$@"; }
+
+    auth_header() { echo "Authorization: Bearer $(cat $TOKEN 2>/dev/null)"; }
+
+    # ── 계정 ────────────────────────────────────────────────────────────────
+    signup() {
+      U="user$(date +%s)$(rnd 1000)"
+      hit -X POST $A/api/auth/signup -H "$JSON" \
+        -d "{\"username\":\"$U\",\"password\":\"$PW\"}"
+      echo "$U" >> $USERS
+      echo "$U"
+    }
+
+    pick_user() { sed -n "$(( RANDOM % $(wc -l < $USERS) + 1 ))p" $USERS; }
+
+    # 로그인은 refreshToken 쿠키를 받는다. refresh·logout이 그 쿠키를 요구하므로
+    # 쿠키 항아리를 방문 내내 들고 다닌다(브라우저와 같은 모양).
+    login() {
+      rm -f "$2"
+      get -c "$2" -X POST $A/api/auth/login -H "$JSON" \
+        -d "{\"username\":\"$1\",\"password\":\"$PW\"}" | tok
+    }
+
+    # ── 배경 흐름 ───────────────────────────────────────────────────────────
+    # 네 갈래를 각각 다른 리듬으로 돌린다. 한 갈래가 멈춰도 나머지는 흐른다.
+
+    flow_frontend() {         # frontend→external : 브라우저가 페이지를 여는 트래픽
+      # frontend는 정적 파일만 서빙하고 다른 서비스를 부르지 않는다(nginx.conf). 그래서
+      # 이 노드에는 나가는 east-west 엣지가 구조적으로 없고, 관측되는 것은 '브라우저에게
+      # 페이지를 돌려주는 응답'뿐이다. 상대(브라우저)는 클러스터 밖이라 external로 접힌다.
+      while :; do
+        # 페이지와 자산을 '한 연결로' 가져온다(브라우저와 같다). 정적 응답은 짧아서
+        # 한 요청만으로는 세션 창(프레임 5개)을 못 채워 판정이 아예 안 나온다.
+        # keep-alive로 이어 붙여야 이 노드가 화면에 나타난다.
+        hit $F/ $(cat /tmp/assets 2>/dev/null) $F/favicon.svg
+        nap 4 9
+      done
+    }
+
+    flow_post_auth() {        # post→auth : 글 수정이 auth validate를 부른다
+      while :; do
+        T=$(cat $ANCHOR 2>/dev/null)
+        [ -n "$T" ] && hit -X PUT $P/api/posts/$T -H "$(auth_header)" -H "$JSON" \
+          -d "{\"title\":\"살아있는 글\",\"content\":\"$(date +%H:%M:%S) / $(rnd 10000)\"}"
+        # 목록·상세 조회도 섞는다. 같은 호출만 반복하면 그 자체가 열거 모양이다.
+        maybe 40 && hit $P/api/posts -H "$(auth_header)"
+        maybe 30 && [ -n "$T" ] && hit $P/api/posts/$T -H "$(auth_header)"
+        nap 2 7
+      done
+    }
+
+    flow_comment_post() {     # comment→post : 댓글 목록이 post에 존재 확인을 부른다
+      while :; do
+        T=$(cat $ANCHOR 2>/dev/null)
+        [ -n "$T" ] && hit $C/api/comments/$T/comments -H "$(auth_header)"
+        nap 3 9
+      done
+    }
+
+    flow_comment_auth() {     # comment→auth : 댓글 쓰기·지우기. 쌍으로 돌려 순증이 없다
+      while :; do
+        T=$(cat $ANCHOR 2>/dev/null)
+        if [ -n "$T" ]; then
+          CID=$(get -X POST $C/api/comments/$T/comments -H "$(auth_header)" -H "$JSON" \
+            -d "{\"content\":\"댓글 $(rnd 10000)\"}" | jnum commentId)
+          nap 5 9
+          [ -n "$CID" ] && maybe 40 && hit -X PUT $C/api/comments/$CID \
+            -H "$(auth_header)" -H "$JSON" -d '{"content":"댓글 고침"}'
+          [ -n "$CID" ] && hit -X DELETE $C/api/comments/$CID -H "$(auth_header)"
+        fi
+        sleep $(between 1 3)
+      done
+    }
+
+    # ── 사람 한 명의 방문 ───────────────────────────────────────────────────
+    # 배경 흐름이 덮지 않는 API(가입·로그아웃·갱신·글 생성/삭제)를 여기서 덮는다.
+    visit() {
+      JAR=/tmp/jar.visit
+      if [ "$(wc -l < $USERS)" -lt 8 ] || maybe 15; then U=$(signup); think
+      else U=$(pick_user); fi
+
+      # 사람은 API가 아니라 페이지를 먼저 연다. frontend는 정적 파일만 서빙하고
+      # API 프록시가 없어서(nginx.conf), 브라우저가 서비스로 직접 호출하는 구조다.
+      # 그래서 frontend는 이 페이지 로드로만 트래픽에 등장한다.
+      hit $F/
+      maybe 70 && hit $F/assets/index.js
+      think
+
+      VT=$(login "$U" "$JAR")
+      [ -z "$VT" ] && { rm -f $JAR; return; }
+      VH="Authorization: Bearer $VT"
+
+      hit $P/api/posts -H "$VH"; think
+
+      MINE=$(get -X POST $P/api/posts -H "$VH" -H "$JSON" \
+        -d "{\"title\":\"방문 글 $(rnd 1000)\",\"content\":\"본문\"}" | jnum postId)
+      think
+      [ -n "$MINE" ] && maybe 60 && {
+        hit -X PUT $P/api/posts/$MINE -H "$VH" -H "$JSON" \
+          -d '{"title":"방문 글(수정)","content":"고쳐 씀"}'
+        think
+      }
+      [ -n "$MINE" ] && maybe 70 && {
+        CID=$(get -X POST $C/api/comments/$MINE/comments -H "$VH" -H "$JSON" \
+          -d '{"content":"방문 댓글"}' | jnum commentId)
+        think
+        [ -n "$CID" ] && maybe 50 && hit -X DELETE $C/api/comments/$CID -H "$VH"
+      }
+      maybe 40 && { hit -b $JAR -X POST $A/api/auth/refresh; think; }
+
+      # 글 삭제는 post-service가 comment-service에 댓글 정리를 시킨다.
+      # post→comment 엣지는 이 경로에서만 생긴다.
+      [ -n "$MINE" ] && { hit -X DELETE $P/api/posts/$MINE -H "$VH"; think; }
+
+      maybe 70 && hit -b $JAR -X POST $A/api/auth/logout -H "$VH"
+      rm -f $JAR
+    }
+
+    # ── 본체 ────────────────────────────────────────────────────────────────
+    : > $USERS
+    : > $TOKEN
+    : > $ANCHOR
+
+    # 배경 흐름이 쓸 계정과 글이 준비될 때까지 기다린다.
+    while [ ! -s $TOKEN ]; do
+      BG=$(signup)
+      login "$BG" /tmp/jar.bg > $TOKEN
+      [ -s $TOKEN ] || { echo "로그인 대기 중..."; sleep 10; }
+    done
+    get -X POST $P/api/posts -H "$(auth_header)" -H "$JSON" \
+      -d '{"title":"살아있는 글","content":"배경 흐름이 계속 고쳐 쓰는 글"}' | jnum postId > $ANCHOR
+    echo "배경 흐름 시작 — 기준 글=$(cat $ANCHOR)"
+
+    # 페이지가 물어오는 자산 목록을 한 번 뽑아 둔다. 없으면 페이지만 계속 연다.
+    get $F/ | grep -o '/assets/[A-Za-z0-9._-]*' | sort -u \
+      | sed "s|^|$F|" | tr '\n' ' ' > /tmp/assets
+    echo "프론트 자산: $(cat /tmp/assets)"
+
+    flow_frontend &
+    flow_post_auth &
+    flow_comment_post &
+    flow_comment_auth &
+
+    v=0
+    while :; do
+      v=$((v+1))
+      visit
+      echo "방문 $v 완료"
+      # 방문은 공개 API 전체를 덮기 위한 것이라 자주 올 필요가 없다. 배경 흐름이
+      # 그동안에도 계속 흐르므로 화면이 죽지 않는다.
+      sleep $(between 45 120)
+    done

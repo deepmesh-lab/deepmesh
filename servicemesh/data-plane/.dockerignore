@@ -1,0 +1,10 @@
+# 빌드 컨텍스트는 data-plane/ 이다. 패턴은 이 디렉터리 기준.
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+proxy/tests/
+proxy/README.md
+detection/README.md
+
+# 가중치는 PVC로 주입한다. 이미지에 들어가면 교체할 때마다 재빌드해야 한다.
+model/
